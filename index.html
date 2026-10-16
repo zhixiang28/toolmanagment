@@ -458,8 +458,8 @@ function renderScale() {
       <p class="hint">Reads <em>Settled</em> when the weight has stopped changing. Tools are only recognised from settled readings.</p></div>
     <div class="panel"><h2>1. Zero</h2><p>Take everything off the platform, wait for <em>Settled</em>, then press Zero.</p>
       <button class="btn" data-act="cmd" data-cmd="tare">Zero the scale</button><div class="status-line" id="msg-tare"></div></div>
-    <div class="panel"><h2>2. Calibrate</h2><p>Put a known weight on the platform (a bag of sugar, a dumbbell plate) and enter its weight.</p>
-      <div class="row"><div class="field"><label for="calG">Known weight (g)</label><input id="calG" type="number" min="1" step="1" value="500"></div>
+    <div class="panel"><h2>2. Calibrate</h2><p>Put a known weight of 500 g to 2 kg on the platform (a water bottle, a bag of sugar) and enter its exact weight. A good result has a factor of about 200 to 450.</p>
+      <div class="row"><div class="field"><label for="calG">Known weight (g)</label><input id="calG" type="number" min="200" step="1" value="1000"></div>
       <button class="btn" data-act="cmd" data-cmd="calibrate">Calibrate</button></div><div class="status-line" id="msg-calibrate"></div></div>
     <div class="panel"><h2>Detection</h2>
       <div class="row"><div class="field"><label for="minG">Ignore changes smaller than (g)</label><input id="minG" type="number" min="0.5" step="0.5" value="${d?.min_change_g ?? 2}"></div>
@@ -472,7 +472,7 @@ function renderScale() {
 }
 async function runCommand(cmd) {
   const msg = $("#msg-" + cmd); const arg = cmd === "calibrate" ? Number($("#calG").value) : null;
-  if (cmd === "calibrate" && !(arg > 0)) { msg.className = "status-line err"; msg.textContent = "Enter the weight in grams."; return; }
+  if (cmd === "calibrate" && !(arg >= 200)) { msg.className = "status-line err"; msg.textContent = "Use a known weight of at least 200 g (500 g to 2 kg is best). Light weights give a bad calibration."; return; }
   if (!online()) { msg.className = "status-line err"; msg.textContent = "The scale is offline. Check power and WiFi."; return; }
   msg.className = "status-line"; msg.textContent = "Sent. Waiting for the scale...";
   const row = await guard(sb.from("device_commands").insert({ device_id: DEVICE_ID, cmd, arg }).select("id").single());

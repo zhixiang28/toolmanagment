@@ -157,7 +157,7 @@ const state = {
   filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
   teach: null, editingId: null, err: null,
 };
-let sb = null, pollFast = null, pollSlow = null, pollTick = null;
+let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
@@ -171,7 +171,7 @@ function when(ts) {
   const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " " + t;
 }
-function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 15000; }
+function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 30000; }   // the scale reports every 5 s
 function paused() { return state.device?.learn_until && new Date(state.device.learn_until) > new Date(); }
 const needsLook = e => (e.action === "unknown" || e.confidence === "low") && e.id > state.dismissedUpTo && (Date.now() - new Date(e.ts)) < 12 * 3600e3;
 function sortedTools() { return [...state.tools].sort((a, b) => (a.slot || "~").localeCompare(b.slot || "~") || a.name.localeCompare(b.name)); }
@@ -190,7 +190,7 @@ async function boot() {
   sb.auth.onAuthStateChange((_e, s) => { const was = !!state.user; state.user = s?.user || null; if (was !== !!state.user) route(); });
   route();
 }
-function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); state.user ? startApp() : renderLogin(); }
+function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); state.user ? startApp() : renderLogin(); }
 
 function renderSetup() {
   $("#app").innerHTML = `<div class="center"><h1>Connect to Supabase</h1>
@@ -209,6 +209,12 @@ function renderLogin(msg) {
     const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
     if (error) $("#lmsg").textContent = error.message;
   };
+}
+
+/* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
+function keepWatching() {
+  if (document.hidden || !sb || !state.user) return;
+  sb.from("devices").update({ watch_until: new Date(Date.now() + 25000).toISOString() }).eq("device_id", DEVICE_ID).then(() => {}, () => {});
 }
 
 /* ---------- app shell ---------- */
@@ -231,6 +237,7 @@ function startApp() {
   $("#main").addEventListener("click", onMainClick);
   refreshAll().then(() => { renderTab(); });
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
+  keepWatching(); pollWatch = setInterval(keepWatching, 10000);
   pollSlow = setInterval(() => { if (!document.hidden) refreshAll(); }, 4000);
   pollTick = setInterval(() => { if (!state.teach && (state.tab === "board" || state.tab === "tools")) renderTab(); }, 30000);
 }

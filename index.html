@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Tool Scale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E4E9EB; --panel:#F6F8F8; --ink:#14232B; --ink-2:#47585F; --line:#C2CBD0;
+  --steel:#24607A; --steel-dark:#1A4A5F; --hivis:#F2C200; --alert:#B83A26; --ok:#2E7D4F;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:40px;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.hdr :focus-visible{outline-color:var(--hivis)}
+.num{font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.05;margin:0;letter-spacing:.005em}
+
+/* header */
+.hdr{background:var(--ink);color:#fff;position:sticky;top:0;z-index:5}
+.hdr-in{max-width:1100px;margin:0 auto;padding:var(--s3) var(--s4);display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap}
+.brand{font:700 28px/1 var(--display);margin-right:auto}
+.live{display:flex;align-items:baseline;gap:var(--s3)}
+.live .v{font:600 34px/1 var(--display);min-width:5.5ch;text-align:right}
+.live .u{font:500 18px var(--display);opacity:.7;margin-left:-6px}
+.state{display:flex;align-items:center;gap:var(--s2);font-size:14px;color:#D5DEE2}
+.dot{width:10px;height:10px;border-radius:50%;background:#7C8A91;flex:none}
+.dot.settled{background:#5BD18B}.dot.moving{background:var(--hivis)}.dot.off{background:#E5795F}
+.linkbtn{background:none;border:0;color:#C7D3D8;text-decoration:underline;cursor:pointer;padding:var(--s2)}
+.tabs{max-width:1100px;margin:0 auto;padding:0 var(--s4);display:flex;gap:var(--s5);overflow-x:auto}
+.tab{background:none;border:0;border-bottom:4px solid transparent;color:#AEBDC4;padding:var(--s3) 0 var(--s2);font:600 20px var(--display);cursor:pointer;white-space:nowrap}
+.tab[aria-selected=true]{color:#fff;border-bottom-color:var(--hivis)}
+
+main{max-width:1100px;margin:0 auto;padding:var(--s5) var(--s4) var(--s6)}
+.banner{background:#F8E3DE;border-left:6px solid var(--alert);padding:var(--s3) var(--s4);margin-bottom:var(--s4);display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.banner.info{background:#FFF4C2;border-color:var(--hivis)}
+.banner span{flex:1;min-width:200px}
+
+/* board */
+.summary{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
+.summary h1{font-size:clamp(40px,7vw,64px);font-weight:700}
+.summary p{margin:var(--s2) 0 0;color:var(--ink-2);max-width:60ch}
+.board{background-color:var(--panel);background-image:radial-gradient(circle,#C3CCD0 2.2px,transparent 2.8px);background-size:26px 26px;border:1px solid var(--line);padding:var(--s4);display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:var(--s3)}
+.tile{position:relative;min-height:132px;padding:var(--s3) var(--s4);display:flex;flex-direction:column;justify-content:space-between;border:3px solid var(--steel);background:var(--steel);color:#fff}
+.tile h3{font-size:26px;font-weight:600;overflow-wrap:break-word;hyphens:auto}
+.tile .slot{font-size:13px;opacity:.8}
+.tile .meta{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s2);font-size:14px}
+.tile .w{font:500 20px var(--display);white-space:nowrap}
+.tile.out{background:repeating-linear-gradient(135deg,rgba(242,194,0,.20) 0 9px,transparent 9px 18px),var(--panel);color:var(--ink);border:3px dashed var(--hivis);border-color:#D4A900}
+.tile .badge{font:700 16px var(--display);background:var(--hivis);color:var(--ink);padding:0 var(--s2);align-self:flex-start;margin-bottom:var(--s1)}
+.tile .flip{background:none;border:0;color:inherit;opacity:.85;text-decoration:underline;cursor:pointer;font-size:13px;padding:var(--s1)}
+.tile.out .flip{opacity:.7}
+
+/* generic */
+section.block{margin-top:var(--s6)}
+section.block>h2{font-size:30px;margin-bottom:var(--s3)}
+.btn{background:var(--ink);color:#fff;border:2px solid var(--ink);padding:var(--s2) var(--s4);cursor:pointer;font-weight:600}
+.btn:hover{background:#243845}
+.btn.sec{background:transparent;color:var(--ink)}
+.btn.sec:hover{background:#D5DDE0}
+.btn.danger{background:var(--alert);border-color:var(--alert)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+label{display:block;font-size:14px;font-weight:600;margin-bottom:var(--s1)}
+input[type=text],input[type=number],input[type=email],input[type=password]{width:100%;padding:var(--s2) var(--s3);border:2px solid #9EAAB0;background:#fff;min-height:42px}
+.hint{font-size:14px;color:var(--ink-2);margin:var(--s1) 0 0}
+.row{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-end}
+.field{flex:1;min-width:140px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+th,td{text-align:left;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);vertical-align:top;font-size:15px}
+th{font:600 17px var(--display);background:#D9E0E3}
+.tablewrap{overflow-x:auto}
+.chip{display:inline-block;font-size:13px;padding:1px var(--s2);border:1px solid var(--line);background:#fff;margin:0 var(--s1) var(--s1) 0}
+.chip.warn{border-color:var(--alert);color:var(--alert)}
+.chip.in{border-color:var(--steel);color:var(--steel)}
+.chip.out{background:var(--hivis);border-color:#D4A900}
+.filters{display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-wrap:wrap}
+.filters button{background:#fff;border:2px solid #9EAAB0;padding:var(--s1) var(--s3);cursor:pointer}
+.filters button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.log{list-style:none;margin:0;padding:0;border:1px solid var(--line);background:var(--panel)}
+.log li{display:grid;grid-template-columns:110px 1fr;gap:var(--s3);padding:var(--s3) var(--s4);border-bottom:1px solid var(--line)}
+.log li:last-child{border-bottom:0}
+.log .t{color:var(--ink-2);font-size:14px}
+.log .what{font-weight:600}
+.log .note{font-size:14px;color:var(--ink-2)}
+.log li.check{border-left:6px solid var(--alert);padding-left:calc(var(--s4) - 6px)}
+.empty{padding:var(--s5);border:2px dashed #9EAAB0;background:var(--panel)}
+.empty h2{margin-bottom:var(--s2)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--s5)}
+.panel{background:var(--panel);border:1px solid var(--line);padding:var(--s4) var(--s5)}
+.panel h2{font-size:26px;margin-bottom:var(--s2)}
+.panel p{margin:0 0 var(--s3)}
+.big{font:600 56px/1 var(--display)}
+.status-line{font-size:14px;margin-top:var(--s2);min-height:1.5em}
+.status-line.err{color:var(--alert)}.status-line.ok{color:var(--ok)}
+
+/* dialog */
+dialog{border:3px solid var(--ink);padding:0;max-width:560px;width:calc(100% - 24px);background:var(--panel);color:var(--ink)}
+dialog::backdrop{background:rgba(20,35,43,.6)}
+.dlg-h{padding:var(--s4) var(--s5);background:var(--ink);color:#fff}
+.dlg-h h2{font-size:28px}
+.dlg-b{padding:var(--s5);display:grid;gap:var(--s4)}
+.dlg-f{padding:var(--s3) var(--s5) var(--s5);display:flex;gap:var(--s3);justify-content:flex-end;flex-wrap:wrap}
+.teach{border:2px dashed #9EAAB0;padding:var(--s4);background:#fff}
+.teach ol{margin:var(--s2) 0;padding-left:20px}
+.samples{display:flex;gap:var(--s2);flex-wrap:wrap;margin:var(--s3) 0}
+.samples .s{font:600 20px var(--display);background:var(--steel);color:#fff;padding:0 var(--s3)}
+
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:var(--s3) var(--s5);border-left:8px solid var(--hivis);font-weight:600;z-index:20;max-width:90vw}
+.toast[hidden]{display:none}
+.center{max-width:420px;margin:12vh auto;padding:0 var(--s4)}
+.center h1{font-size:48px;margin-bottom:var(--s3)}
+.center form{display:grid;gap:var(--s3);margin-top:var(--s4)}
+code{background:#D9E0E3;padding:0 4px}
+@media (max-width:560px){
+  .log li{grid-template-columns:1fr;gap:var(--s1)}
+  .live .v{font-size:28px}
+  .hdr-in{gap:var(--s2) var(--s3)}
+  .brand{font-size:24px}
+  .linkbtn{padding:var(--s1)}
+  .board{padding:var(--s3)}
+  .tile h3{font-size:20px}
+  .tile{padding:var(--s3)}
+  .tile .meta{flex-wrap:wrap}
+  .big{font-size:44px}
+}
+@media (prefers-reduced-motion:no-preference){ .toast{animation:up .18s ease-out} @keyframes up{from{opacity:0;transform:translate(-50%,8px)}} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* ============ CONFIG - edit these 3 lines ============ */
+const SUPABASE_URL = "https://ogxuwchojexznsxvvdhi.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9neHV3Y2hvamV4em5zeHZ2ZGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTMyNTIsImV4cCI6MjEwMzk4OTI1Mn0.fbYPBohH22SXebXBQNoy0EoFDQeLwgKPyR3_v3r4R3U";
+const DEVICE_ID    = "toolscale-1";
+/* ====================================================== */
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtG = (n, d = 1) => (n == null || isNaN(n)) ? "-" : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const round05 = x => Math.round(x * 2) / 2;
+
+const state = {
+  tab: "board", user: null, tools: [], events: [], device: null, wevents: [],
+  filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
+  teach: null, editingId: null, err: null,
+};
+let sb = null, pollFast = null, pollSlow = null, pollTick = null;
+
+/* ---------- helpers ---------- */
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
+function ago(ts) {
+  if (!ts) return ""; const m = Math.max(0, Math.round((Date.now() - new Date(ts)) / 60000));
+  if (m < 1) return "just now"; if (m < 60) return m + " min"; const h = Math.floor(m / 60);
+  if (h < 48) return h + " h " + (m % 60) + " m"; return Math.floor(h / 24) + " days";
+}
+function when(ts) {
+  const d = new Date(ts), now = new Date();
+  const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " " + t;
+}
+function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 15000; }
+function paused() { return state.device?.learn_until && new Date(state.device.learn_until) > new Date(); }
+const needsLook = e => (e.action === "unknown" || e.confidence === "low") && e.id > state.dismissedUpTo && (Date.now() - new Date(e.ts)) < 12 * 3600e3;
+function sortedTools() { return [...state.tools].sort((a, b) => (a.slot || "~").localeCompare(b.slot || "~") || a.name.localeCompare(b.name)); }
+function closeTo(tool) {
+  return state.tools.filter(o => o.id !== tool.id && Math.abs(Number(o.weight_g) - Number(tool.weight_g)) <= Number(o.tol_g) + Number(tool.tol_g));
+}
+
+async function guard(p) { try { const r = await p; if (r.error) throw r.error; return r.data; } catch (e) { state.err = e.message || String(e); renderBanner(); throw e; } }
+
+/* ---------- boot ---------- */
+async function boot() {
+  if (SUPABASE_URL.includes("YOUR-PROJECT") || SUPABASE_KEY.startsWith("YOUR_")) return renderSetup();
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const { data } = await sb.auth.getSession();
+  state.user = data.session?.user || null;
+  sb.auth.onAuthStateChange((_e, s) => { const was = !!state.user; state.user = s?.user || null; if (was !== !!state.user) route(); });
+  route();
+}
+function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); state.user ? startApp() : renderLogin(); }
+
+function renderSetup() {
+  $("#app").innerHTML = `<div class="center"><h1>Connect to Supabase</h1>
+  <p>Open <code>index.html</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> near the top of the script (Supabase &rarr; Project Settings &rarr; API). Then reload this page.</p></div>`;
+}
+function renderLogin(msg) {
+  $("#app").innerHTML = `<div class="center"><h1>Tool Scale</h1>
+  <p>Sign in to see which tools are out.</p>
+  <form id="login"><div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
+  <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+  <button class="btn" type="submit">Sign in</button>
+  <div class="status-line err" id="lmsg">${esc(msg || "")}</div></form>
+  <p class="hint">No account yet? In Supabase open Authentication &rarr; Users &rarr; Add user.</p></div>`;
+  $("#login").onsubmit = async e => {
+    e.preventDefault();
+    const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
+    if (error) $("#lmsg").textContent = error.message;
+  };
+}
+
+/* ---------- app shell ---------- */
+function startApp() {
+  $("#app").innerHTML = `
+  <header class="hdr"><div class="hdr-in">
+    <div class="brand">Tool Scale</div>
+    <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
+    <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
+  </div>
+  <nav class="tabs" role="tablist">
+    ${[["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]].map(([k, l]) =>
+      `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
+    <button class="linkbtn" id="signout" style="margin-left:auto;font-size:14px">Sign out</button>
+  </nav></header>
+  <main id="main"></main>
+  <dialog id="dlg"></dialog>`;
+  $("#signout").onclick = () => sb.auth.signOut();
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  $("#main").addEventListener("click", onMainClick);
+  refreshAll().then(() => { renderTab(); });
+  pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
+  pollSlow = setInterval(() => { if (!document.hidden) refreshAll(); }, 4000);
+  pollTick = setInterval(() => { if (!state.teach && (state.tab === "board" || state.tab === "tools")) renderTab(); }, 30000);
+}
+function setTab(t) {
+  state.tab = t;
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  renderTab();
+}
+function renderTab() { ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale })[state.tab](); renderBanner(); }
+function renderBanner() {
+  const m = $("#main"); if (!m) return; let b = $("#errBanner");
+  if (!state.err) { b?.remove(); return; }
+  if (!b) { b = document.createElement("div"); b.id = "errBanner"; b.className = "banner"; m.prepend(b); }
+  b.innerHTML = `<span>Can't reach the database: ${esc(state.err)}</span>`;
+}
+
+/* ---------- data ---------- */
+async function refreshDevice() {
+  try {
+    const { data, error } = await sb.from("devices").select("*").eq("device_id", DEVICE_ID).maybeSingle();
+    if (error) throw error; state.device = data; state.err = null; updateLive();
+  } catch (e) { state.err = e.message; renderBanner(); }
+}
+async function refreshAll() {
+  try {
+    const [tools, events] = await Promise.all([
+      guard(sb.from("tools").select("*").order("name")),
+      guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
+    ]);
+    await refreshDevice();
+    const toolsKey = JSON.stringify(tools), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events;
+    const top = events[0]?.id ?? 0;
+    if (state.seenEventId == null) state.seenEventId = top;
+    else if (top > state.seenEventId) {
+      events.filter(e => e.id > state.seenEventId).reverse().forEach(e => toast(eventText(e)));
+      state.seenEventId = top;
+    }
+    if (state.tab === "scale") await refreshWeightEvents();
+    if (changed && !state.teach && state.tab !== "scale") renderTab();
+    document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
+  } catch (e) { /* banner already shown */ }
+}
+async function refreshWeightEvents() {
+  const d = await guard(sb.from("weight_events").select("*").order("id", { ascending: false }).limit(15));
+  state.wevents = d; const el = $("#wevBody"); if (el) el.innerHTML = wevRows();
+}
+function updateLive() {
+  const d = state.device, dot = $("#dot"); if (!dot) return;
+  const on = online(); let cls = "off", txt = "Scale offline";
+  if (on) {
+    if (d.cal_factor == null) { cls = "moving"; txt = "Not calibrated"; }
+    else if (paused()) { cls = "moving"; txt = "Matching paused"; }
+    else if (d.is_stable) { cls = "settled"; txt = "Settled"; } else { cls = "moving"; txt = "Moving"; }
+  } else if (d?.last_seen) txt = "Offline, seen " + ago(d.last_seen) + " ago";
+  dot.className = "dot " + cls; $("#stateTxt").textContent = txt;
+  $("#liveV").textContent = on && d.live_g != null ? fmtG(d.live_g) : "-";
+  const big = $("#bigLive"); if (big) { big.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g" : "-"; }
+  const sd = $("#devInfo"); if (sd) sd.innerHTML = devInfo();
+  const tl = $("#teachLive"); if (tl) tl.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g  (" + txt.toLowerCase() + ")" : "scale offline";
+}
+
+/* ---------- board ---------- */
+function eventText(e) {
+  const g = Math.abs(e.delta_g ?? 0);
+  if (e.action === "take") return `${e.tool_name} taken`;
+  if (e.action === "return") return `${e.tool_name} returned`;
+  if (e.action === "manual") return `${e.tool_name} ${String(e.note || "changed by hand").replace(/^Marked/, "marked")}`;
+  return `Unknown change of ${e.delta_g < 0 ? "-" : "+"}${fmtG(g)} g`;
+}
+function renderBoard() {
+  const tools = sortedTools(), out = tools.filter(t => t.status === "out");
+  const look = state.events.filter(needsLook);
+  let h = "";
+  if (look.length) h += `<div class="banner"><span><strong>${look.length} event${look.length > 1 ? "s" : ""} to check.</strong> The scale could not be sure which tool moved.</span>
+    <button class="btn sec" data-act="goto-check">Review</button><button class="btn sec" data-act="dismiss">Dismiss</button></div>`;
+  if (!tools.length) {
+    $("#main").innerHTML = h + `<div class="empty"><h2>No tools on the board yet</h2><p>Add a tool, then teach the scale its weight by taking it out of the box and putting it back.</p><button class="btn" data-act="goto-tools">Add the first tool</button></div>`;
+    return;
+  }
+  h += `<div class="summary"><div><h1>${tools.length - out.length} of ${tools.length} tools in</h1>
+    <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong> (${ago(t.taken_at)})`).join(", ") + "." : "Everything is back on the board."}</p></div></div>
+  <div class="board">${tools.map(t => t.status === "out" ? `
+    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3>${esc(t.name)}</h3><div class="slot">${esc(t.slot || "")}</div></div>
+      <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="in">Mark in</button></div></div>` : `
+    <div class="tile"><div><h3>${esc(t.name)}</h3><div class="slot">${esc(t.slot || "")}</div></div>
+      <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="out">Mark out</button></div></div>`).join("")}</div>
+  <section class="block"><h2>Latest</h2>${logHtml(state.events.slice(0, 5))}</section>`;
+  $("#main").innerHTML = h;
+}
+
+/* ---------- tools ---------- */
+function renderTools() {
+  const tools = sortedTools();
+  $("#main").innerHTML = `<div class="summary"><div><h1>Tools</h1><p>Each tool needs a weight the scale can recognise. Tools closer than their match windows are flagged, because the scale cannot tell them apart.</p></div>
+    <button class="btn" data-act="add">Add tool</button></div>
+  ${tools.length ? `<div class="tablewrap"><table><thead><tr><th>Tool</th><th>Lives in</th><th>Weight</th><th>Window</th><th>State</th><th></th></tr></thead><tbody>
+  ${tools.map(t => { const c = closeTo(t); return `<tr><td><strong>${esc(t.name)}</strong>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
+    <td>${esc(t.slot || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
+    <td><span class="chip ${t.status}">${t.status === "out" ? "Out " + esc(ago(t.taken_at)) : "In"}</span></td>
+    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button></td></tr>`; }).join("")}</tbody></table></div>`
+    : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first tool to get started.</p></div>`}`;
+}
+
+function openDialog(tool, prefill) {
+  state.editingId = tool?.id || null; state.teach = null; state.prefill = prefill || null;
+  const d = $("#dlg");
+  d.innerHTML = `<form method="dialog" id="toolForm"><div class="dlg-h"><h2>${tool ? "Edit tool" : prefill ? "Save as new tool" : "Add tool"}</h2></div>
+  <div class="dlg-b">
+    <div><label for="f_name">Name</label><input id="f_name" type="text" required maxlength="60" value="${esc(tool?.name || "")}"></div>
+    <div><label for="f_slot">Lives in</label><input id="f_slot" type="text" maxlength="60" placeholder="e.g. Drawer 2" value="${esc(tool?.slot || "")}"></div>
+    <div class="row"><div class="field"><label for="f_w">Weight (g)</label><input id="f_w" type="number" step="0.1" min="0.5" required value="${tool ? tool.weight_g : prefill ? prefill.weight : ""}"></div>
+      <div class="field"><label for="f_t">Match window &plusmn; (g)</label><input id="f_t" type="number" step="0.5" min="0.5" required value="${tool ? tool.tol_g : 3}"></div></div>
+    ${prefill ? `<p class="hint">Weight comes from one reading of ${fmtG(prefill.weight)} g. Use Start teaching below to refine it.</p>` : ""}
+    <div class="teach" id="teachBox"></div>
+  </div>
+  <div class="dlg-f">${tool ? `<button type="button" class="btn danger" id="f_del" style="margin-right:auto">Delete</button>` : ""}
+    <button type="button" class="btn sec" id="f_cancel">Cancel</button><button type="submit" class="btn" id="f_save">Save tool</button></div></form>`;
+  renderTeach(); d.showModal();
+  $("#f_cancel").onclick = closeDialog; d.oncancel = () => stopTeach();
+  $("#f_del")?.addEventListener("click", async () => {
+    if (!confirm(`Delete ${tool.name}? Its history stays in the activity log.`)) return;
+    await guard(sb.from("tools").delete().eq("id", tool.id)); await refreshAll(); closeDialog();
+  });
+  $("#toolForm").onsubmit = async e => {
+    e.preventDefault();
+    const row = { name: $("#f_name").value.trim(), slot: $("#f_slot").value.trim() || null, weight_g: Number($("#f_w").value), tol_g: Number($("#f_t").value) };
+    if (!row.name || !(row.weight_g > 0)) return;
+    if (tool) await guard(sb.from("tools").update(row).eq("id", tool.id));
+    else {
+      const r = await guard(sb.from("tools").insert(row).select("id").single());
+      if (state.prefill?.out) await guard(sb.rpc("set_tool_status", { p_tool: r.id, p_status: "out" }));   // it was taken out of the box
+    }
+    await refreshAll(); closeDialog(); toast(tool ? "Saved" : row.name + " added");
+  };
+}
+function closeDialog() { stopTeach(); $("#dlg").close(); renderTab(); }
+
+/* teach-by-weighing */
+function renderTeach() {
+  const b = $("#teachBox"); if (!b) return; const t = state.teach;
+  if (!t) {
+    b.innerHTML = `<strong>Let the scale weigh it</strong><p class="hint">Matching pauses while you weigh, so nothing else on the board changes.</p>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn" id="quickStart">Weigh it now</button><button type="button" class="btn sec" id="teachStart">Start teaching (3 times)</button></div>
+      <p class="hint">Weigh it now: one reading, fills in by itself. Teaching: three readings, a more accurate weight and window.</p>`;
+    $("#quickStart").onclick = () => startTeach("quick"); $("#teachStart").onclick = () => startTeach("multi"); return;
+  }
+  if (t.mode === "quick") {
+    b.innerHTML = `<strong>Weighing</strong>
+      <ol><li>Take the item out of the toolbox (or put it in).</li><li>Wait for <em>Settled</em>. The weight fills in by itself.</li></ol>
+      <div>Scale reads <strong class="num" id="teachLive">-</strong></div>
+      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="teachStop">Cancel</button></div>`;
+    $("#teachStop").onclick = stopTeach; updateLive(); return;
+  }
+  const n = t.samples.length, mean = n ? t.samples.reduce((a, b) => a + b, 0) / n : 0;
+  const sd = n > 1 ? Math.sqrt(t.samples.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
+  const spread = n ? Math.max(...t.samples) - Math.min(...t.samples) : 0;
+  const tol = n ? Math.max(3, round05(Math.max(3 * sd, spread / 2 + 1.5))) : 3;
+  t.result = n ? { w: Math.round(mean * 10) / 10, tol } : null;
+  b.innerHTML = `<strong>Teaching</strong>
+    <ol><li>Take the tool out of the box and wait for <em>Settled</em>.</li><li>Put it back and wait again.</li><li>Repeat 3 times. Each move adds a reading.</li></ol>
+    <div>Scale reads <strong class="num" id="teachLive">-</strong></div>
+    <div class="samples" aria-live="polite">${t.samples.map(s => `<span class="s num">${fmtG(s)}</span>`).join("") || `<span class="hint">No readings yet.</span>`}</div>
+    ${n ? `<p>Average <strong class="num">${fmtG(t.result.w)} g</strong>, window &plusmn; <strong class="num">${fmtG(tol)} g</strong>${n < 3 ? ` <span class="hint">(${3 - n} more recommended)</span>` : ""}</p>` : ""}
+    <div class="row"><button type="button" class="btn" id="teachUse" ${n ? "" : "disabled"}>Use this weight</button><button type="button" class="btn sec" id="teachStop">Stop teaching</button></div>`;
+  $("#teachUse").onclick = () => { $("#f_w").value = t.result.w; $("#f_t").value = t.result.tol; stopTeach(); toast("Weight filled in. Save the tool to keep it."); };
+  $("#teachStop").onclick = stopTeach; updateLive();
+}
+async function setLearn(seconds) {
+  const until = seconds ? new Date(Date.now() + seconds * 1000).toISOString() : null;
+  await guard(sb.from("devices").update({ learn_until: until }).eq("device_id", DEVICE_ID)); await refreshDevice();
+}
+async function startTeach(mode) {
+  const last = await guard(sb.from("weight_events").select("id").order("id", { ascending: false }).limit(1));
+  state.teach = { mode: mode || "multi", lastId: last[0]?.id ?? 0, samples: [], result: null };
+  await setLearn(600); renderTeach();
+  state.teach.timer = setInterval(pollTeach, 1000);
+}
+async function pollTeach() {
+  const t = state.teach; if (!t) return;
+  try {
+    const rows = await guard(sb.from("weight_events").select("*").gt("id", t.lastId).order("id", { ascending: true }));
+    let added = false;
+    rows.forEach(r => { t.lastId = r.id; if (r.kind === "change" && Math.abs(r.delta_g) >= 2) { t.samples.push(Math.abs(Number(r.delta_g))); added = true; } });
+    if (added && t.mode === "quick") {
+      const w = Math.round(t.samples[0] * 10) / 10;
+      $("#f_w").value = w; $("#f_t").value = 3; stopTeach(); toast(`Weighed ${fmtG(w)} g. Name it and save.`); $("#f_name").focus(); return;
+    }
+    if (added) renderTeach();
+  } catch (e) {}
+}
+function stopTeach() {
+  if (state.teach) { clearInterval(state.teach.timer); state.teach = null; setLearn(0).catch(() => {}); renderTeach(); }
+}
+
+/* ---------- activity ---------- */
+function logHtml(list) {
+  if (!list.length) return `<div class="empty"><p>No activity yet. Take a tool out of the box to see it here.</p></div>`;
+  return `<ul class="log">${list.map(e => `<li class="${needsLook(e) ? "check" : ""}"><div class="t">${esc(when(e.ts))}</div>
+    <div><div class="what">${esc(eventText(e))}${e.confidence === "low" && e.action !== "unknown" ? ` <span class="chip warn">Check this</span>` : ""}</div>
+    ${e.action === "unknown" ? `<div class="note">${esc(e.note || "")}. If a tool moved, mark it in or out on the Board.</div>${Math.abs(e.delta_g) >= 2 ? `<button class="btn sec" data-act="newfromevent" data-id="${e.id}" style="margin-top:8px">Save as new tool</button>` : ""}`
+      : e.note && e.action !== "manual" ? `<div class="note">${esc(e.note)}</div>` : ""}</div></li>`).join("")}</ul>`;
+}
+function renderActivity() {
+  const f = state.filter, list = state.events.filter(e => f === "all" || (f === "check" ? (e.action === "unknown" || e.confidence === "low") : e.action === f));
+  $("#main").innerHTML = `<div class="summary"><div><h1>Activity</h1><p>Every move the scale has recognised, newest first.</p></div></div>
+  <div class="filters" role="group" aria-label="Filter">${[["all", "All"], ["take", "Taken"], ["return", "Returned"], ["check", "Needs checking"]].map(([k, l]) =>
+    `<button data-act="filter" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div>${logHtml(list)}`;
+}
+
+/* ---------- scale ---------- */
+function devInfo() {
+  const d = state.device; if (!d) return "No scale has registered yet. Power the ESP32 and check its WiFi and key settings.";
+  return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
+}
+function wevRows() {
+  return state.wevents.map(w => `<tr><td>${esc(when(w.ts))}</td><td class="num">${fmtG(w.stable_g)} g</td><td class="num">${w.kind === "rebase" ? "-" : (w.delta_g > 0 ? "+" : "") + fmtG(w.delta_g)} g</td><td>${esc(w.kind === "rebase" ? "New baseline" : w.outcome || "")}</td></tr>`).join("") || `<tr><td colspan="4">No readings yet.</td></tr>`;
+}
+function renderScale() {
+  const d = state.device;
+  $("#main").innerHTML = `<div class="summary"><div><h1>Scale</h1><p id="devInfo">${devInfo()}</p></div></div>
+  <div class="grid2">
+    <div class="panel"><h2>Live reading</h2><div class="big num" id="bigLive">-</div>
+      <p class="hint">Reads <em>Settled</em> when the weight has stopped changing. Tools are only recognised from settled readings.</p></div>
+    <div class="panel"><h2>1. Zero</h2><p>Take everything off the platform, wait for <em>Settled</em>, then press Zero.</p>
+      <button class="btn" data-act="cmd" data-cmd="tare">Zero the scale</button><div class="status-line" id="msg-tare"></div></div>
+    <div class="panel"><h2>2. Calibrate</h2><p>Put a known weight on the platform (a bag of sugar, a dumbbell plate) and enter its weight.</p>
+      <div class="row"><div class="field"><label for="calG">Known weight (g)</label><input id="calG" type="number" min="1" step="1" value="500"></div>
+      <button class="btn" data-act="cmd" data-cmd="calibrate">Calibrate</button></div><div class="status-line" id="msg-calibrate"></div></div>
+    <div class="panel"><h2>Detection</h2>
+      <div class="row"><div class="field"><label for="minG">Ignore changes smaller than (g)</label><input id="minG" type="number" min="0.5" step="0.5" value="${d?.min_change_g ?? 2}"></div>
+        <button class="btn sec" data-act="savemin">Save</button></div>
+      <p style="margin-top:12px">${paused() ? `Matching is paused until ${esc(new Date(d.learn_until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}.` : "Matching is on."} Pause it while you swap the toolbox or reload the drawer; the scale then re-baselines instead of guessing.</p>
+      <div class="row"><button class="btn sec" data-act="pause" data-s="120">Pause 2 min</button><button class="btn sec" data-act="pause" data-s="600">Pause 10 min</button><button class="btn sec" data-act="pause" data-s="0">Resume</button></div></div>
+  </div>
+  <section class="block"><h2>Recent readings</h2><div class="tablewrap"><table><thead><tr><th>Time</th><th>Settled at</th><th>Change</th><th>Result</th></tr></thead><tbody id="wevBody">${wevRows()}</tbody></table></div></section>`;
+  updateLive(); refreshWeightEvents();
+}
+async function runCommand(cmd) {
+  const msg = $("#msg-" + cmd); const arg = cmd === "calibrate" ? Number($("#calG").value) : null;
+  if (cmd === "calibrate" && !(arg > 0)) { msg.className = "status-line err"; msg.textContent = "Enter the weight in grams."; return; }
+  if (!online()) { msg.className = "status-line err"; msg.textContent = "The scale is offline. Check power and WiFi."; return; }
+  msg.className = "status-line"; msg.textContent = "Sent. Waiting for the scale...";
+  const row = await guard(sb.from("device_commands").insert({ device_id: DEVICE_ID, cmd, arg }).select("id").single());
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const r = await guard(sb.from("device_commands").select("status,result").eq("id", row.id).single());
+    if (r.status === "done") { msg.className = "status-line ok"; msg.textContent = cmd === "tare" ? "Zeroed." : "Calibrated (" + (r.result || "ok") + ")."; refreshDevice(); return; }
+    if (r.status === "error") { msg.className = "status-line err"; msg.textContent = r.result || "The scale reported an error."; return; }
+  }
+  msg.className = "status-line err"; msg.textContent = "No answer from the scale. It checks for commands every few seconds; try again.";
+}
+
+/* ---------- clicks ---------- */
+async function onMainClick(ev) {
+  const el = ev.target.closest("[data-act]"); if (!el) return; const a = el.dataset.act;
+  try {
+    if (a === "goto-tools") setTab("tools");
+    else if (a === "goto-check") { state.filter = "check"; setTab("activity"); }
+    else if (a === "dismiss") { state.dismissedUpTo = state.events[0]?.id || 0; localStorage.setItem("ts_dismissed", state.dismissedUpTo); renderTab(); }
+    else if (a === "add") openDialog(null);
+    else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 }); }
+    else if (a === "edit") openDialog(state.tools.find(t => t.id === el.dataset.id));
+    else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
+    else if (a === "flip") { await guard(sb.rpc("set_tool_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); }
+    else if (a === "cmd") { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); }
+    else if (a === "savemin") { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); }
+    else if (a === "pause") { await setLearn(Number(el.dataset.s)); renderScale(); }
+  } catch (e) { /* banner shown by guard */ }
+}
+
+boot();
+</script>
+</body>
+</html>

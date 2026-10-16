@@ -298,6 +298,7 @@ function updateLive() {
   $("#liveV").textContent = on && d.live_g != null ? fmtG(d.live_g) : "-";
   const big = $("#bigLive"); if (big) { big.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g" : "-"; }
   const sd = $("#devInfo"); if (sd) sd.innerHTML = devInfo();
+  const ab = $("#accBody"); if (ab) ab.innerHTML = accHtml();
   const tl = $("#teachLive"); if (tl) tl.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g  (" + txt.toLowerCase() + ")" : "scale offline";
 }
 
@@ -454,6 +455,17 @@ function devInfo() {
   const d = state.device; if (!d) return "No scale has registered yet. Power the ESP32 and check its WiFi and key settings.";
   return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
 }
+function accHtml() {
+  const d = state.device, inn = state.tools.filter(t => t.status === "in");
+  if (!d || d.stable_g == null || !online()) return `<p class="hint">Waiting for the scale.</p>`;
+  const exp = inn.reduce((a, t) => a + Number(t.weight_g), 0), act = Number(d.stable_g), err = act - exp;
+  const win = Math.max(3, Math.sqrt(inn.reduce((a, t) => a + Number(t.tol_g) ** 2, 0)));
+  const ok = Math.abs(err) <= win, pct = exp > 0 ? err / exp * 100 : 0;
+  return `<div class="row" style="gap:24px"><div><div class="hint">Tools marked in add up to</div><div class="big num">${fmtG(exp)} g</div></div>
+    <div><div class="hint">Scale reads</div><div class="big num">${fmtG(act)} g</div></div></div>
+    <p class="status-line ${ok ? "ok" : "err"}" style="font-size:16px;margin-top:12px">${ok ? "Matches (" + (err >= 0 ? "+" : "") + fmtG(err) + " g)." :
+    "Off by " + (err >= 0 ? "+" : "") + fmtG(err) + " g" + (exp > 0 ? " (" + fmtG(pct) + "%)" : "") + ". An unregistered item is on the platform, a tool status is wrong, or the scale needs recalibrating."}</p>`;
+}
 function wevRows() {
   return state.wevents.map(w => `<tr><td>${esc(when(w.ts))}</td><td class="num">${fmtG(w.stable_g)} g</td><td class="num">${w.kind === "rebase" ? "-" : (w.delta_g > 0 ? "+" : "") + fmtG(w.delta_g)} g</td><td>${esc(w.kind === "rebase" ? "New baseline" : w.outcome || "")}</td></tr>`).join("") || `<tr><td colspan="4">No readings yet.</td></tr>`;
 }
@@ -463,6 +475,8 @@ function renderScale() {
   <div class="grid2">
     <div class="panel"><h2>Live reading</h2><div class="big num" id="bigLive">-</div>
       <p class="hint">Reads <em>Settled</em> when the weight has stopped changing. Tools are only recognised from settled readings.</p></div>
+    <div class="panel"><h2>Accuracy check</h2><div id="accBody">${accHtml()}</div>
+      <p class="hint">If this is off by the same percentage every time, recalibrate. If it changes with where the tool sits, the platform is the problem.</p></div>
     <div class="panel"><h2>1. Zero</h2><p>Take everything off the platform, wait for <em>Settled</em>, then press Zero.</p>
       <button class="btn" data-act="cmd" data-cmd="tare">Zero the scale</button><div class="status-line" id="msg-tare"></div></div>
     <div class="panel"><h2>2. Calibrate</h2><p>Put a known weight of 500 g to 2 kg on the platform (a water bottle, a bag of sugar) and enter its exact weight. A good result has a factor of about 200 to 450.</p>

@@ -244,10 +244,10 @@ function requireAuth(fn, mode) {
   const draw = () => {
     const code = up && step === 2;
     d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>${up ? "Create account" : "Sign in"}</h2></div>
-    <div class="dlg-b"><p style="margin:0">${code ? "Enter the 6-digit code we emailed to " + esc(pending.email) + "." : up ? "Register with your company email (@" + COMPANY_DOMAIN + "). This is the same account as MR Tracker." : "Sign in with your MR Tracker email and 4-digit PIN to add or edit tools and change scale settings."}</p>
+    <div class="dlg-b"><p style="margin:0">${code ? "Enter the 6-digit code we emailed to " + esc(pending.email) + "." : up ? "Register with your company email (@" + COMPANY_DOMAIN + ")." : "Sign in with your company email and 4-digit PIN to make changes."}</p>
     ${code ? `<div><label for="cd">Verification code</label><input id="cd" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>` : `
     ${up ? `<div><label for="nm">Full name</label><input id="nm" type="text" autocomplete="name" maxlength="60" required></div>` : ""}
-    <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required ${up ? `placeholder="name@${COMPANY_DOMAIN}"` : ""}></div>
+    <div><label for="em">Company email</label><input id="em" type="email" autocomplete="username" required placeholder="name@${COMPANY_DOMAIN}"></div>
     <div><label for="pw">${up ? "Choose a 4-digit PIN" : "PIN"}</label><input id="pw" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" autocomplete="${up ? "new-password" : "current-password"}" required></div>`}
     <div class="status-line err" id="lmsg"></div>
     <button type="button" class="linkbtn" id="lswitch" style="color:var(--steel);justify-self:start;padding:0">${up ? "Already have an account? Sign in" : "New user? Create an account"}</button></div>

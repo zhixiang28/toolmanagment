@@ -185,9 +185,7 @@ async function guard(p) { try { const r = await p; if (r.error) throw r.error; r
 async function boot() {
   if (SUPABASE_URL.includes("YOUR-PROJECT") || SUPABASE_KEY.startsWith("YOUR_")) return renderSetup();
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  const { data } = await sb.auth.getSession();
-  state.user = data.session?.user || null;
-  sb.auth.onAuthStateChange((_e, s) => { const was = !!state.user; state.user = s?.user || null; if (was !== !!state.user) route(); });
+  state.user = { anonymous: true };   // open access: no sign-in
   route();
 }
 function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); state.user ? startApp() : renderLogin(); }
@@ -228,11 +226,9 @@ function startApp() {
   <nav class="tabs" role="tablist">
     ${[["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]].map(([k, l]) =>
       `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
-    <button class="linkbtn" id="signout" style="margin-left:auto;font-size:14px">Sign out</button>
   </nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
-  $("#signout").onclick = () => sb.auth.signOut();
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
   $("#main").addEventListener("click", onMainClick);
   refreshAll().then(() => { renderTab(); });

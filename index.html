@@ -36,6 +36,11 @@ h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.05;margin:0;le
 .dot{width:10px;height:10px;border-radius:50%;background:#7C8A91;flex:none}
 .dot.settled{background:#5BD18B}.dot.moving{background:var(--hivis)}.dot.off{background:#E5795F}
 .linkbtn{background:none;border:0;color:#C7D3D8;text-decoration:underline;cursor:pointer;padding:var(--s2)}
+.modesw{display:flex;border:2px solid #5C7380}
+.modesw button{background:none;border:0;color:#C7D3D8;padding:var(--s1) var(--s3);cursor:pointer;font:600 16px var(--display)}
+.modesw button[aria-pressed=true]{background:var(--hivis);color:var(--ink)}
+.bigcount{font:700 96px/1 var(--display)}
+.chip.low{border-color:var(--alert);color:var(--alert)}
 .tabs{max-width:1100px;margin:0 auto;padding:0 var(--s4);display:flex;gap:var(--s5);overflow-x:auto}
 .tab{background:none;border:0;border-bottom:4px solid transparent;color:#AEBDC4;padding:var(--s3) 0 var(--s2);font:600 20px var(--display);cursor:pointer;white-space:nowrap}
 .tab[aria-selected=true]{color:#fff;border-bottom-color:var(--hivis)}
@@ -145,6 +150,8 @@ code{background:#D9E0E3;padding:0 4px}
 const SUPABASE_URL = "https://ogxuwchojexznsxvvdhi.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9neHV3Y2hvamV4em5zeHZ2ZGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTMyNTIsImV4cCI6MjEwMzk4OTI1Mn0.fbYPBohH22SXebXBQNoy0EoFDQeLwgKPyR3_v3r4R3U";
 const DEVICE_ID    = "toolscale-1";
+/* Which scale (devices.device_id) each page uses. The demo shares one load cell; give consumables its own id here when it gets its own hardware. */
+const SCALES = { tools: DEVICE_ID, count: DEVICE_ID };
 /* ====================================================== */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -156,7 +163,12 @@ const state = {
   tab: "board", user: null, tools: [], events: [], device: null, wevents: [],
   filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
   teach: null, editingId: null, err: null,
+  mode: "tools", citems: [], cevents: [], countItem: null, cont: {},
 };
+try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; state.tab = "stock"; } } catch (e) {}
+const devId = () => SCALES[state.mode] || DEVICE_ID;
+const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]],
+               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["scale", "Scale"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -269,7 +281,7 @@ function requireAuth(fn, mode) {
 /* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
 function keepWatching() {
   if (document.hidden || !sb || !state.token) return;   // faster reporting only while a signed-in user has the page open
-  rpcAuth("toolscale_watch", { p_device: DEVICE_ID }).then(() => {}, () => {});
+  rpcAuth("toolscale_watch", { p_device: devId() }).then(() => {}, () => {});
 }
 
 /* ---------- app shell ---------- */
@@ -277,17 +289,19 @@ function startApp() {
   $("#app").innerHTML = `
   <header class="hdr"><div class="hdr-in">
     <div class="brand">Tool Scale</div>
+    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button></div>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
   </div>
   <nav class="tabs" role="tablist">
-    ${[["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]].map(([k, l]) =>
+    ${TABS[state.mode].map(([k, l]) =>
       `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
     <button class="linkbtn" id="authbtn" style="margin-left:auto;font-size:14px"></button>
   </nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  document.querySelectorAll(".modesw button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn();
   $("#main").addEventListener("click", onMainClick);
@@ -295,14 +309,25 @@ function startApp() {
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
   keepWatching(); pollWatch = setInterval(keepWatching, 10000);
   pollSlow = setInterval(() => { if (!document.hidden) refreshAll(); }, 4000);
-  pollTick = setInterval(() => { if (!state.teach && (state.tab === "board" || state.tab === "tools")) renderTab(); }, 30000);
+  pollTick = setInterval(() => { if (!state.teach && ["board", "tools", "stock", "items"].includes(state.tab)) renderTab(); }, 30000);
+}
+function setMode(m) {
+  if (m === state.mode) return;
+  state.mode = m; state.tab = TABS[m][0][0]; state.device = null; state.countItem = null;
+  try { localStorage.setItem("ts_mode", m); } catch (e) {}
+  route();
+  /* the physical scale pauses tool matching while it is counting; only a signed-in user can change that */
+  if (state.token) rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
 }
 function setTab(t) {
   state.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   renderTab();
 }
-function renderTab() { ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale })[state.tab](); renderBanner(); }
+function renderTab() {
+  if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
+  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory })[state.tab](); renderBanner();
+}
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
   if (!state.err) { b?.remove(); return; }
@@ -313,20 +338,22 @@ function renderBanner() {
 /* ---------- data ---------- */
 async function refreshDevice() {
   try {
-    const { data, error } = await sb.from("devices").select("*").eq("device_id", DEVICE_ID).maybeSingle();
+    const { data, error } = await sb.from("devices").select("*").eq("device_id", devId()).maybeSingle();
     if (error) throw error; state.device = data; state.err = null; updateLive();
   } catch (e) { state.err = e.message; renderBanner(); }
 }
 async function refreshAll() {
   try {
-    const [tools, events] = await Promise.all([
+    const [tools, events, citems, cevents] = await Promise.all([
       guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
+      guard(sb.from("consumables").select("*").eq("active", true).order("name")),
+      guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
     ]);
     await refreshDevice();
-    const toolsKey = JSON.stringify(tools), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events;
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents;
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -334,7 +361,7 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale") renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !(state.tab === "count" && $("#cntSel"))) renderTab();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
   } catch (e) { /* banner already shown */ }
 }
@@ -354,6 +381,7 @@ function updateLive() {
   $("#liveV").textContent = on && d.live_g != null ? fmtG(d.live_g) : "-";
   const big = $("#bigLive"); if (big) { big.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g" : "-"; }
   const sd = $("#devInfo"); if (sd) sd.innerHTML = devInfo();
+  if (state.tab === "count") updateCount();
   const ab = $("#accBody"); if (ab) ab.innerHTML = accHtml();
   const tl = $("#teachLive"); if (tl) tl.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g  (" + txt.toLowerCase() + ")" : "scale offline";
 }
@@ -370,6 +398,7 @@ function renderBoard() {
   const tools = sortedTools(), out = tools.filter(t => t.status === "out");
   const look = state.events.filter(needsLook);
   let h = "";
+  if (state.device?.mode === "count") h += `<div class="banner info"><span><strong>The scale is in counting mode.</strong> Tool detection is paused. Sign in, then switch to Tools (top left) to resume.</span></div>`;
   if (look.length) h += `<div class="banner"><span><strong>${look.length} event${look.length > 1 ? "s" : ""} to check.</strong> The scale could not be sure which tool moved.</span>
     <button class="btn sec" data-act="goto-check">Review</button><button class="btn sec" data-act="dismiss">Dismiss</button></div>`;
   if (!tools.length) {
@@ -461,7 +490,7 @@ function renderTeach() {
   $("#teachStop").onclick = stopTeach; updateLive();
 }
 async function setLearn(seconds) {
-  await guard(rpcAuth("toolscale_set_learn", { p_device: DEVICE_ID, p_seconds: seconds || 0 })); await refreshDevice();
+  await guard(rpcAuth("toolscale_set_learn", { p_device: devId(), p_seconds: seconds || 0 })); await refreshDevice();
 }
 async function startTeach(mode) {
   const last = await guard(sb.from("weight_events").select("id").order("id", { ascending: false }).limit(1));
@@ -507,6 +536,7 @@ function devInfo() {
   return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
 }
 function accHtml() {
+  if (state.mode === "count") return `<p class="hint">Tool accuracy check is on the Tools page. In Consumables mode, check the scale with a known weight instead.</p>`;
   const d = state.device, inn = state.tools.filter(t => t.status === "in");
   if (!d || d.stable_g == null || !online()) return `<p class="hint">Waiting for the scale.</p>`;
   const exp = inn.reduce((a, t) => a + Number(t.weight_g), 0), act = Number(d.stable_g), err = act - exp;
@@ -547,7 +577,7 @@ async function runCommand(cmd) {
   if (cmd === "calibrate" && !(arg >= 200)) { msg.className = "status-line err"; msg.textContent = "Use a known weight of at least 200 g (500 g to 2 kg is best). Light weights give a bad calibration."; return; }
   if (!online()) { msg.className = "status-line err"; msg.textContent = "The scale is offline. Check power and WiFi."; return; }
   msg.className = "status-line"; msg.textContent = "Sent. Waiting for the scale...";
-  const rowId = await guard(rpcAuth("toolscale_send_command", { p_device: DEVICE_ID, p_cmd: cmd, p_arg: arg })); const row = { id: rowId };
+  const rowId = await guard(rpcAuth("toolscale_send_command", { p_device: devId(), p_cmd: cmd, p_arg: arg })); const row = { id: rowId };
   for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 1000));
     const r = await guard(sb.from("device_commands").select("status,result").eq("id", row.id).single());
@@ -557,11 +587,123 @@ async function runCommand(cmd) {
   msg.className = "status-line err"; msg.textContent = "No answer from the scale. It checks for commands every few seconds; try again.";
 }
 
+
+/* ---------- consumables ---------- */
+const CATS = ["Screw", "Bolt", "Nut", "Washer", "Rivet", "Pin", "Other"];
+const lowItem = i => Number(i.min_stock) > 0 && Number(i.count_on_hand) <= Number(i.min_stock);
+function renderStock() {
+  const items = state.citems, low = items.filter(lowItem);
+  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>No consumables yet</h2><p>Add a screw, bolt, nut or washer with its weight per piece, then count it by putting the bin on the scale.</p><button class="btn" data-act="citem-add">Add the first item</button></div>`; return; }
+  $("#main").innerHTML = `<div class="summary"><div><h1>${low.length ? low.length + " low on stock" : "Stock is OK"}</h1>
+    <p>${items.length} item${items.length > 1 ? "s" : ""}. ${low.length ? "Low: " + low.map(i => `<strong>${esc(i.name)}</strong> (${i.count_on_hand})`).join(", ") + "." : "Nothing is at or below its minimum."}</p></div>
+    <button class="btn" data-act="goto-count">Count now</button></div>
+  <div class="tablewrap"><table><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th></tr></thead><tbody>
+  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(i.location || "-")}</td>
+    <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function renderItems() {
+  const items = state.citems;
+  $("#main").innerHTML = `<div class="summary"><div><h1>Items</h1><p>Each item needs its weight per piece and the weight of its empty bin. Weigh 10 to 20 pieces on the Count tab to learn it.</p></div><button class="btn" data-act="citem-add">Add item</button></div>
+  ${items.length ? `<div class="tablewrap"><table><thead><tr><th>Item</th><th>Type</th><th>Per piece</th><th>Empty bin</th><th>Minimum</th><th>Where</th><th></th></tr></thead><tbody>
+  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(i.location || "-")}</td>
+    <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
+}
+function renderHistory() {
+  const list = state.cevents;
+  $("#main").innerHTML = `<div class="summary"><div><h1>History</h1><p>Every count and stock change, newest first.</p></div></div>
+  ${list.length ? `<ul class="log">${list.map(e => `<li><div class="t">${esc(when(e.ts))}</div><div><div class="what">${esc(e.item_name || "")}: ${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})</div>
+    <div class="note">${esc(e.note || "")}${e.person ? " &middot; " + esc(e.person) : ""}${e.weight_g != null ? " &middot; " + fmtG(e.weight_g) + " g on scale" : ""}</div></div></li>`).join("")}</ul>` : `<div class="empty"><p>No counts yet.</p></div>`}`;
+}
+function renderCount() {
+  const items = state.citems;
+  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>Add an item first</h2><p>Counting needs the weight of one piece.</p><button class="btn" data-act="citem-add">Add an item</button></div>`; return; }
+  const it = items.find(i => i.id === state.countItem) || items[0]; state.countItem = it.id;
+  const cont = state.cont[it.id] ?? it.container_g;
+  const dm = state.device?.mode;
+  $("#main").innerHTML = `${dm && dm !== "count" ? `<div class="banner info"><span><strong>The scale is still in tool mode.</strong> Tool matching may react while you count. Sign in and switch to Consumables to pause it.</span></div>` : ""}
+  <div class="summary"><div><h1>Count</h1><p>Put the empty bin on the scale, press <em>Use current reading</em>, then add the parts. The count updates by itself.</p></div></div>
+  <div class="grid2">
+    <div class="panel"><h2>Item</h2><div class="field"><label for="cntSel">What are you counting?</label>
+      <select id="cntSel" style="width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff">${items.map(i => `<option value="${i.id}" ${i.id === it.id ? "selected" : ""}>${esc(i.name)}${i.spec ? " (" + esc(i.spec) + ")" : ""}</option>`).join("")}</select></div>
+      <p class="hint" style="margin-top:8px">${fmtG(it.unit_g, 3)} g per piece &middot; ${it.count_on_hand} in stock${it.min_stock ? " &middot; minimum " + it.min_stock : ""}</p>
+      <div class="row" style="margin-top:12px"><div class="field"><label for="cntCont">Empty bin (g)</label><input id="cntCont" type="number" step="0.1" min="0" value="${cont}"></div>
+        <button class="btn sec" data-act="cont-now">Use current reading</button></div></div>
+    <div class="panel"><h2>On the scale now</h2><div class="bigcount num" id="cntBig">-</div>
+      <p class="status-line" id="cntStatus" style="font-size:16px"></p><p class="hint" id="cntRead"></p>
+      <div class="row" style="margin-top:12px"><button class="btn" data-act="csave">Save count to stock</button></div></div>
+    <div class="panel"><h2>Learn weight per piece</h2><p>Put a known number of pieces in the bin (10 to 20 is best), enter how many, and press Learn.</p>
+      <div class="row"><div class="field"><label for="cntN">Pieces in the bin</label><input id="cntN" type="number" min="1" step="1" value="10"></div><button class="btn sec" data-act="clearn">Learn weight per piece</button></div></div>
+  </div>`;
+  $("#cntSel").onchange = e => { state.countItem = e.target.value; renderCount(); };
+  $("#cntCont").oninput = e => { state.cont[it.id] = e.target.value; updateCount(); };
+  updateCount();
+}
+function countNow() {
+  const it = state.citems.find(i => i.id === state.countItem), d = state.device; if (!it) return null;
+  const cont = Number($("#cntCont")?.value || 0), live = online() && d?.live_g != null ? Number(d.live_g) : null;
+  if (live == null) return { it, cont, live: null };
+  const net = live - cont, raw = net / Number(it.unit_g), n = Math.max(0, Math.round(raw));
+  return { it, cont, live, net, raw, n, frac: Math.abs(raw - n), stable: !!d.is_stable };
+}
+function updateCount() {
+  const big = $("#cntBig"); if (!big) return; const c = countNow(), st = $("#cntStatus"), rd = $("#cntRead");
+  if (!c || c.live == null) { big.textContent = "-"; st.className = "status-line err"; st.textContent = "Scale offline."; rd.textContent = ""; return; }
+  big.textContent = c.n; big.style.opacity = c.stable ? 1 : .5;
+  rd.innerHTML = `Scale reads ${fmtG(c.live)} g, minus bin ${fmtG(c.cont)} g = ${fmtG(c.net)} g, which is ${fmtG(c.raw, 1)} pieces.`;
+  if (!c.stable) { st.className = "status-line"; st.textContent = "Moving. Wait for it to settle."; }
+  else if (c.frac > 0.3) { st.className = "status-line err"; st.textContent = "Not sure: it falls between whole pieces. Check the weight per piece and the empty bin weight."; }
+  else if (Number(c.it.unit_g) < 0.5) { st.className = "status-line"; st.textContent = "Settled, but these pieces are very light for this load cell. Treat the count as approximate."; }
+  else { st.className = "status-line ok"; st.textContent = "Settled."; }
+}
+function itemDialog(item) {
+  const d = $("#dlg"); state.editingId = item?.id || null;
+  d.innerHTML = `<form method="dialog" id="itemForm"><div class="dlg-h"><h2>${item ? "Edit item" : "Add item"}</h2></div><div class="dlg-b">
+    <div><label for="i_name">Name</label><input id="i_name" type="text" required maxlength="60" placeholder="e.g. Pan head screw" value="${esc(item?.name || "")}"></div>
+    <div class="row"><div class="field"><label for="i_cat">Type</label><select id="i_cat" style="width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff">${CATS.map(c => `<option ${c === (item?.category || "Screw") ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+      <div class="field"><label for="i_spec">Size</label><input id="i_spec" type="text" maxlength="40" placeholder="e.g. M4 x 10 mm" value="${esc(item?.spec || "")}"></div></div>
+    <div class="row"><div class="field"><label for="i_u">Weight per piece (g)</label><input id="i_u" type="number" step="0.001" min="0.001" required value="${item ? item.unit_g : ""}"></div>
+      <div class="field"><label for="i_c">Empty bin (g)</label><input id="i_c" type="number" step="0.1" min="0" required value="${item ? item.container_g : 0}"></div></div>
+    <div class="row"><div class="field"><label for="i_m">Reorder at or below</label><input id="i_m" type="number" step="1" min="0" value="${item ? item.min_stock : 0}"></div>
+      <div class="field"><label for="i_l">Where it lives</label><input id="i_l" type="text" maxlength="60" placeholder="e.g. Shelf 2" value="${esc(item?.location || "")}"></div></div>
+    ${item ? "" : `<div><label for="i_n">Starting count (optional)</label><input id="i_n" type="number" step="1" min="0" placeholder="leave empty if unknown"></div>`}
+    <p class="hint">Not sure of the weight? Save a guess, then use Learn weight per piece on the Count tab.</p></div>
+  <div class="dlg-f">${item ? `<button type="button" class="btn danger" id="i_del" style="margin-right:auto">Hide</button>` : ""}<button type="button" class="btn sec" id="i_cancel">Cancel</button><button type="submit" class="btn">Save item</button></div></form>`;
+  d.showModal();
+  $("#i_cancel").onclick = () => d.close();
+  $("#i_del")?.addEventListener("click", async () => {
+    if (!confirm(`Hide ${item.name}? Its history is kept.`)) return;
+    try { await guard(rpcAuth("toolscale_consumable_hide", { p_id: item.id })); await refreshAll(); d.close(); renderTab(); } catch (e) {}
+  });
+  $("#itemForm").onsubmit = async e => {
+    e.preventDefault();
+    const n = item ? null : $("#i_n").value;
+    try {
+      const id = await guard(rpcAuth("toolscale_consumable_save", { p_id: item?.id || null, p_name: $("#i_name").value, p_category: $("#i_cat").value, p_spec: $("#i_spec").value,
+        p_unit_g: Number($("#i_u").value), p_container_g: Number($("#i_c").value), p_min_stock: Number($("#i_m").value || 0), p_location: $("#i_l").value, p_count: n === "" || n == null ? null : Number(n) }));
+      state.countItem = state.countItem || id; await refreshAll(); d.close(); renderTab(); toast("Saved");
+    } catch (err) {}
+  };
+}
+
 /* ---------- clicks ---------- */
 async function onMainClick(ev) {
   const el = ev.target.closest("[data-act]"); if (!el) return; const a = el.dataset.act;
   try {
     if (a === "goto-tools") setTab("tools");
+    else if (a === "goto-count") setTab("count");
+    else if (a === "citem-add") requireAuth(() => itemDialog(null));
+    else if (a === "citem-edit") requireAuth(() => itemDialog(state.citems.find(i => i.id === el.dataset.id)));
+    else if (a === "cont-now") { const c = countNow(); if (c?.live != null) { $("#cntCont").value = c.live.toFixed(1); state.cont[c.it.id] = $("#cntCont").value; updateCount(); } }
+    else if (a === "csave") requireAuth(async () => {
+      const c = countNow(); if (!c || c.live == null) return toast("The scale is offline.");
+      if (!c.stable && !confirm("The scale is still moving. Save this count anyway?")) return;
+      try { await guard(rpcAuth("toolscale_consumable_count", { p_id: c.it.id, p_count: c.n, p_weight: c.live, p_container: c.cont })); await refreshAll(); toast(`${c.it.name}: ${c.n} saved`); if (state.tab === "count") renderCount(); } catch (e) {} });
+    else if (a === "clearn") requireAuth(async () => {
+      const c = countNow(), n = Number($("#cntN").value); if (!c || c.live == null) return toast("The scale is offline.");
+      if (!(n >= 1) || !(c.net > 0)) return toast("Put the pieces in the bin first and enter how many.");
+      const u = Math.round(c.net / n * 1000) / 1000, it = c.it;
+      if (!confirm(`Weight per piece will be ${u} g (was ${it.unit_g} g). Use it?`)) return;
+      try { await guard(rpcAuth("toolscale_consumable_save", { p_id: it.id, p_name: it.name, p_category: it.category, p_spec: it.spec, p_unit_g: u, p_container_g: c.cont, p_min_stock: it.min_stock, p_location: it.location, p_count: null })); await refreshAll(); renderCount(); toast("Learned " + u + " g per piece"); } catch (e) {} });
     else if (a === "goto-check") { state.filter = "check"; setTab("activity"); }
     else if (a === "dismiss") { state.dismissedUpTo = state.events[0]?.id || 0; localStorage.setItem("ts_dismissed", state.dismissedUpTo); renderTab(); }
     else if (a === "add") requireAuth(() => openDialog(null));
@@ -570,7 +712,7 @@ async function onMainClick(ev) {
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
     else if (a === "flip") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); } catch (e) {} });
     else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
-    else if (a === "savemin") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_min_change", { p_device: DEVICE_ID, p_g: Number($("#minG").value) })); toast("Saved"); refreshDevice(); } catch (e) {} });
+    else if (a === "savemin") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_min_change", { p_device: devId(), p_g: Number($("#minG").value) })); toast("Saved"); refreshDevice(); } catch (e) {} });
     else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });
   } catch (e) { /* banner shown by guard */ }
 }

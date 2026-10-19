@@ -205,22 +205,36 @@ function renderSetup() {
 }
 /* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in. */
 function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; }
-function requireAuth(fn) {
+const COMPANY_DOMAIN = "spacelogic.com.sg";
+function requireAuth(fn, mode) {
   if (state.user) return fn();
   state.afterLogin = fn;
-  const d = $("#dlg");
-  d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>Sign in</h2></div>
-    <div class="dlg-b"><p style="margin:0">Sign in with your MR Tracker account to add or edit tools and change scale settings.</p>
-    <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
-    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
-    <div class="status-line err" id="lmsg"></div></div>
-    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn">Sign in</button></div></form>`;
-  d.showModal();
+  const up = mode === "signup", d = $("#dlg");
+  d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>${up ? "Create account" : "Sign in"}</h2></div>
+    <div class="dlg-b"><p style="margin:0">${up ? "Register with your company email (@" + COMPANY_DOMAIN + ")." : "Sign in to add or edit tools and change scale settings."}</p>
+    <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required ${up ? `placeholder="name@${COMPANY_DOMAIN}"` : ""}></div>
+    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="${up ? "new-password" : "current-password"}" minlength="${up ? 8 : 1}" required></div>
+    ${up ? `<div><label for="pw2">Repeat password</label><input id="pw2" type="password" autocomplete="new-password" minlength="8" required></div>` : ""}
+    <div class="status-line err" id="lmsg"></div>
+    <button type="button" class="linkbtn" id="lswitch" style="color:var(--steel);justify-self:start;padding:0">${up ? "Already have an account? Sign in" : "New user? Create an account"}</button></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn">${up ? "Create account" : "Sign in"}</button></div></form>`;
+  if (!d.open) d.showModal();
   $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
+  $("#lswitch").onclick = () => requireAuth(fn, up ? "signin" : "signup");
   $("#login").onsubmit = async e => {
     e.preventDefault();
-    const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
-    if (error) $("#lmsg").textContent = error.message;
+    const email = $("#em").value.trim(), pw = $("#pw").value, msg = $("#lmsg");
+    msg.className = "status-line err";
+    if (up) {
+      if (!email.toLowerCase().endsWith("@" + COMPANY_DOMAIN)) { msg.textContent = "Use your company email (@" + COMPANY_DOMAIN + ")."; return; }
+      if (pw !== $("#pw2").value) { msg.textContent = "The passwords do not match."; return; }
+      const { data, error } = await sb.auth.signUp({ email, password: pw });
+      if (error) { msg.textContent = error.message; return; }
+      if (!data.session) { msg.className = "status-line ok"; msg.textContent = "Account created. Check your email for a confirmation link, then sign in."; }
+      return;
+    }
+    const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if (error) msg.textContent = error.message;
   };
 }
 

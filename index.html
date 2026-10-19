@@ -163,12 +163,12 @@ const state = {
   tab: "board", user: null, tools: [], events: [], device: null, wevents: [],
   filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
   teach: null, editingId: null, err: null,
-  mode: "tools", citems: [], cevents: [], countItem: null, cont: {},
+  mode: "tools", citems: [], cevents: [], countItem: null, cont: {}, reorder: [], draftMsg: null,
 };
 try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; state.tab = "stock"; } } catch (e) {}
 const devId = () => SCALES[state.mode] || DEVICE_ID;
-const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]],
-               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["scale", "Scale"]] };
+const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
+               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -305,6 +305,7 @@ function startApp() {
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn();
   $("#main").addEventListener("click", onMainClick);
+  $("#main").addEventListener("change", ev => { const q = ev.target.dataset?.qty; if (q) requireAuth(async () => { try { await guard(rpcAuth("toolscale_reorder_update", { p_id: q, p_qty: Number(ev.target.value || 1), p_dismiss: false })); await refreshAll(); } catch (e) {} }); });
   refreshAll().then(() => { renderTab(); });
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
   keepWatching(); pollWatch = setInterval(keepWatching, 10000);
@@ -326,7 +327,7 @@ function setTab(t) {
 }
 function renderTab() {
   if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
-  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory })[state.tab](); renderBanner();
+  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder })[state.tab](); renderBanner(); renderAlert();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -344,16 +345,17 @@ async function refreshDevice() {
 }
 async function refreshAll() {
   try {
-    const [tools, events, citems, cevents] = await Promise.all([
+    const [tools, events, citems, cevents, reorder] = await Promise.all([
       guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
       guard(sb.from("consumables").select("*").eq("active", true).order("name")),
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
+      guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
     ]);
     await refreshDevice();
-    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents;
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; updateBadge();
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -425,7 +427,7 @@ function renderTools() {
   ${tools.map(t => { const c = closeTo(t); return `<tr><td><strong>${esc(t.name)}</strong>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
     <td>${esc(t.slot || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
     <td><span class="chip ${t.status}">${t.status === "out" ? "Out " + esc(ago(t.taken_at)) : "In"}</span></td>
-    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button></td></tr>`; }).join("")}</tbody></table></div>`
+    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="tool" data-id="${t.id}">Replace</button></td></tr>`; }).join("")}</tbody></table></div>`
     : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first tool to get started.</p></div>`}`;
 }
 
@@ -439,6 +441,7 @@ function openDialog(tool, prefill) {
     <div class="row"><div class="field"><label for="f_w">Weight (g)</label><input id="f_w" type="number" step="0.1" min="0.5" required value="${tool ? tool.weight_g : prefill ? prefill.weight : ""}"></div>
       <div class="field"><label for="f_t">Match window &plusmn; (g)</label><input id="f_t" type="number" step="0.5" min="0.5" required value="${tool ? tool.tol_g : 3}"></div></div>
     ${prefill ? `<p class="hint">Weight comes from one reading of ${fmtG(prefill.weight)} g. Use Start teaching below to refine it.</p>` : ""}
+    ${purchaseHtml(tool, "p")}
     <div class="teach" id="teachBox"></div>
   </div>
   <div class="dlg-f">${tool ? `<button type="button" class="btn danger" id="f_del" style="margin-right:auto">Delete</button>` : ""}
@@ -453,7 +456,8 @@ function openDialog(tool, prefill) {
     e.preventDefault();
     const row = { name: $("#f_name").value.trim(), slot: $("#f_slot").value.trim() || null, weight_g: Number($("#f_w").value), tol_g: Number($("#f_t").value) };
     if (!row.name || !(row.weight_g > 0)) return;
-    await guard(rpcAuth("toolscale_save_tool", { p_id: tool ? tool.id : null, p_name: row.name, p_slot: row.slot, p_weight: row.weight_g, p_tol: row.tol_g, p_out: !tool && !!state.prefill?.out }));
+    const tid = await guard(rpcAuth("toolscale_save_tool", { p_id: tool ? tool.id : null, p_name: row.name, p_slot: row.slot, p_weight: row.weight_g, p_tol: row.tol_g, p_out: !tool && !!state.prefill?.out }));
+    await guard(rpcAuth("toolscale_set_purchase", { p_kind: "tool", p_id: tid, ...readPurchase("p") }));
     await refreshAll(); closeDialog(); toast(tool ? "Saved" : row.name + " added");
   };
 }
@@ -606,7 +610,7 @@ function renderItems() {
   $("#main").innerHTML = `<div class="summary"><div><h1>Items</h1><p>Each item needs its weight per piece and the weight of its empty bin. Weigh 10 to 20 pieces on the Count tab to learn it.</p></div><button class="btn" data-act="citem-add">Add item</button></div>
   ${items.length ? `<div class="tablewrap"><table><thead><tr><th>Item</th><th>Type</th><th>Per piece</th><th>Empty bin</th><th>Minimum</th><th>Where</th><th></th></tr></thead><tbody>
   ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(i.location || "-")}</td>
-    <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
+    <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="consumable" data-id="${i.id}">Reorder</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
 }
 function renderHistory() {
   const list = state.cevents;
@@ -666,6 +670,7 @@ function itemDialog(item) {
     <div class="row"><div class="field"><label for="i_m">Reorder at or below</label><input id="i_m" type="number" step="1" min="0" value="${item ? item.min_stock : 0}"></div>
       <div class="field"><label for="i_l">Where it lives</label><input id="i_l" type="text" maxlength="60" placeholder="e.g. Shelf 2" value="${esc(item?.location || "")}"></div></div>
     ${item ? "" : `<div><label for="i_n">Starting count (optional)</label><input id="i_n" type="number" step="1" min="0" placeholder="leave empty if unknown"></div>`}
+    ${purchaseHtml(item, "q")}
     <p class="hint">Not sure of the weight? Save a guess, then use Learn weight per piece on the Count tab.</p></div>
   <div class="dlg-f">${item ? `<button type="button" class="btn danger" id="i_del" style="margin-right:auto">Hide</button>` : ""}<button type="button" class="btn sec" id="i_cancel">Cancel</button><button type="submit" class="btn">Save item</button></div></form>`;
   d.showModal();
@@ -680,8 +685,73 @@ function itemDialog(item) {
     try {
       const id = await guard(rpcAuth("toolscale_consumable_save", { p_id: item?.id || null, p_name: $("#i_name").value, p_category: $("#i_cat").value, p_spec: $("#i_spec").value,
         p_unit_g: Number($("#i_u").value), p_container_g: Number($("#i_c").value), p_min_stock: Number($("#i_m").value || 0), p_location: $("#i_l").value, p_count: n === "" || n == null ? null : Number(n) }));
+      await guard(rpcAuth("toolscale_set_purchase", { p_kind: "consumable", p_id: id, ...readPurchase("q") }));
       state.countItem = state.countItem || id; await refreshAll(); d.close(); renderTab(); toast("Saved");
     } catch (err) {}
+  };
+}
+
+/* ---------- reorder list and monthly MR draft ---------- */
+function purchaseHtml(it, k) {
+  return `<details ${it?.buy_link || it?.unit_price != null ? "open" : ""} style="border:1px solid var(--line);padding:8px 12px;background:#fff"><summary style="cursor:pointer;font-weight:600">Purchase details (used for the monthly MR form)</summary>
+    <div style="display:grid;gap:12px;margin-top:12px">
+    <div><label for="${k}_link">Buy link</label><input id="${k}_link" type="text" placeholder="https://" value="${esc(it?.buy_link || "")}"></div>
+    <div><label for="${k}_desc">Description for the order</label><input id="${k}_desc" type="text" maxlength="120" placeholder="e.g. size, model, colour" value="${esc(it?.buy_desc || "")}"></div>
+    <div class="row"><div class="field"><label for="${k}_price">Unit price (SGD)</label><input id="${k}_price" type="number" step="0.01" min="0" value="${it?.unit_price ?? ""}"></div>
+      <div class="field"><label for="${k}_fee">Delivery (SGD)</label><input id="${k}_fee" type="number" step="0.01" min="0" value="${it?.delivery_fee ?? ""}"></div>
+      <div class="field"><label for="${k}_qty">Usual order qty</label><input id="${k}_qty" type="number" step="1" min="1" value="${it?.reorder_qty ?? 1}"></div></div></div></details>`;
+}
+function readPurchase(k) {
+  const n = id => { const v = $("#" + id).value; return v === "" ? null : Number(v); };
+  return { p_link: $("#" + k + "_link").value, p_desc: $("#" + k + "_desc").value, p_price: n(k + "_price"), p_delivery: n(k + "_fee"), p_qty: n(k + "_qty") || 1 };
+}
+const openReorder = () => state.reorder.filter(r => r.status === "open");
+const suggestions = () => state.citems.filter(lowItem).filter(i => !state.reorder.some(r => r.kind === "consumable" && r.item_id === i.id));
+const reorderItem = r => (r.kind === "tool" ? state.tools : state.citems).find(x => x.id === r.item_id) || {};
+function updateBadge() {
+  const n = openReorder().length + suggestions().length, b = document.querySelector('.tab[data-tab="reorder"]');
+  if (b) b.textContent = n ? `Reorder (${n})` : "Reorder";
+}
+function renderAlert() {
+  const m = $("#main"); if (!m || state.tab === "reorder") return;
+  const n = openReorder().length + suggestions().length; if (!n) return;
+  const d = document.createElement("div"); d.className = "banner info";
+  d.innerHTML = `<span><strong>${n} item${n > 1 ? "s" : ""} to reorder or replace.</strong> They are collected for this month's MR form.</span><button class="btn sec" data-act="goto-reorder">Review</button>`;
+  m.prepend(d);
+}
+function renderReorder() {
+  const open = openReorder(), drafted = state.reorder.filter(r => r.status === "in_draft"), sug = suggestions();
+  const month = new Date().toLocaleString("en", { month: "long" });
+  let total = 0, missing = 0;
+  const row = r => { const it = reorderItem(r), price = it.unit_price, ok = !!it.buy_link && price != null && price !== "";
+    if (!ok) missing++; if (price != null && price !== "") total += r.qty * Number(price) + Number(it.delivery_fee || 0);
+    return `<tr><td><strong>${esc(r.item_name)}</strong>${r.note ? `<div class="hint">${esc(r.note)}</div>` : ""}</td><td>${r.kind === "tool" ? "Tool" : "Consumable"}</td><td>${esc(r.reason)}</td>
+      <td><input type="number" min="1" step="1" value="${r.qty}" data-qty="${r.id}" style="width:80px;padding:6px;border:2px solid #9EAAB0" aria-label="Quantity"></td>
+      <td class="num">${price != null && price !== "" ? fmtG(price, 2) : "-"}</td><td>${ok ? `<span class="chip in">Ready</span>` : `<span class="chip warn">${!it.buy_link ? "No link" : "No price"}</span>`}</td>
+      <td><button class="btn sec" data-act="reorder-dismiss" data-id="${r.id}">Remove</button></td></tr>`; };
+  $("#main").innerHTML = `<div class="summary"><div><h1>${open.length} to order</h1>
+    <p>Low stock and replacement requests are collected here. At the end of the month, add them to your MR draft ("Internal (${month})") in one go. Estimated total ${fmtG(total, 2)} SGD${missing ? `, ${missing} missing a link or price` : ""}.</p></div>
+    <button class="btn" data-act="to-draft" ${open.length ? "" : "disabled"}>Add to ${month} MR draft</button></div>
+  ${state.draftMsg ? `<div class="banner info"><span>Added ${state.draftMsg.added} item${state.draftMsg.added === 1 ? "" : "s"} to "<strong>${esc(state.draftMsg.label)}</strong>"${state.draftMsg.already_listed ? ` (${state.draftMsg.already_listed} were already on it)` : ""}. Open MR Tracker, go to Drafts, check the prices and links, and submit it at the end of the month.</span><button class="btn sec" data-act="clear-msg">OK</button></div>` : ""}
+  ${sug.length ? `<section class="block" style="margin-top:0"><h2>Low on stock, not on the list yet</h2><div>${sug.map(i => `<span class="chip warn" style="font-size:15px;padding:4px 10px">${esc(i.name)}: ${i.count_on_hand} left <button class="linkbtn" style="color:var(--steel);padding:0 0 0 8px" data-act="reorder-suggest" data-id="${i.id}">Add</button></span>`).join("")}</div></section>` : ""}
+  ${open.length ? `<div class="tablewrap" style="margin-top:16px"><table><thead><tr><th>Item</th><th>Type</th><th>Why</th><th>Qty</th><th>Price</th><th>Details</th><th></th></tr></thead><tbody>${open.map(row).join("")}</tbody></table></div>`
+    : `<div class="empty" style="margin-top:16px"><h2>Nothing to order</h2><p>Items go on this list when a consumable falls to its minimum, or when you press Replace on a tool.</p></div>`}
+  ${drafted.length ? `<section class="block"><h2>Already in an MR draft</h2><ul class="log">${drafted.map(r => `<li><div class="t">${esc(when(r.created_at))}</div><div><div class="what">${esc(r.item_name)} x ${r.qty}</div><div class="note">${esc(r.reason)}</div></div></li>`).join("")}</ul></section>` : ""}`;
+}
+function reportDialog(kind, item) {
+  const d = $("#dlg"), tool = kind === "tool";
+  const reasons = tool ? ["Worn out", "Broken", "Lost", "Other"] : ["Low stock", "Damaged", "Other"];
+  d.innerHTML = `<form method="dialog" id="repForm"><div class="dlg-h"><h2>${tool ? "Replace" : "Reorder"}: ${esc(item.name)}</h2></div><div class="dlg-b">
+    <div class="row"><div class="field"><label for="r_why">Why</label><select id="r_why" style="width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff">${reasons.map(x => `<option>${x}</option>`).join("")}</select></div>
+      <div class="field"><label for="r_qty">Quantity</label><input id="r_qty" type="number" min="1" step="1" value="${item.reorder_qty || 1}"></div></div>
+    <div><label for="r_note">Note (optional)</label><input id="r_note" type="text" maxlength="120"></div>
+    <p class="hint">It is added to the reorder list. Nothing is sent until you add the list to your MR draft.</p></div>
+  <div class="dlg-f"><button type="button" class="btn sec" id="r_cancel">Cancel</button><button type="submit" class="btn">Add to reorder list</button></div></form>`;
+  d.showModal(); $("#r_cancel").onclick = () => d.close();
+  $("#repForm").onsubmit = async e => {
+    e.preventDefault();
+    try { await guard(rpcAuth("toolscale_report_replacement", { p_kind: kind, p_id: item.id, p_reason: $("#r_why").value, p_qty: Number($("#r_qty").value || 1), p_note: $("#r_note").value }));
+      await refreshAll(); d.close(); renderTab(); toast("Added to the reorder list"); } catch (err) {}
   };
 }
 
@@ -690,6 +760,12 @@ async function onMainClick(ev) {
   const el = ev.target.closest("[data-act]"); if (!el) return; const a = el.dataset.act;
   try {
     if (a === "goto-tools") setTab("tools");
+    else if (a === "goto-reorder") setTab("reorder");
+    else if (a === "clear-msg") { state.draftMsg = null; renderReorder(); }
+    else if (a === "report") requireAuth(() => reportDialog(el.dataset.kind, (el.dataset.kind === "tool" ? state.tools : state.citems).find(x => x.id === el.dataset.id)));
+    else if (a === "reorder-suggest") requireAuth(async () => { const i = state.citems.find(x => x.id === el.dataset.id); try { await guard(rpcAuth("toolscale_report_replacement", { p_kind: "consumable", p_id: i.id, p_reason: "Low stock", p_qty: i.reorder_qty || 1, p_note: i.count_on_hand + " left (minimum " + i.min_stock + ")" })); await refreshAll(); renderReorder(); } catch (e) {} });
+    else if (a === "reorder-dismiss") requireAuth(async () => { try { await guard(rpcAuth("toolscale_reorder_update", { p_id: el.dataset.id, p_qty: null, p_dismiss: true })); await refreshAll(); renderReorder(); } catch (e) {} });
+    else if (a === "to-draft") requireAuth(async () => { try { state.draftMsg = await guard(rpcAuth("toolscale_reorder_to_draft", {})); await refreshAll(); renderReorder(); } catch (e) {} });
     else if (a === "goto-count") setTab("count");
     else if (a === "citem-add") requireAuth(() => itemDialog(null));
     else if (a === "citem-edit") requireAuth(() => itemDialog(state.citems.find(i => i.id === el.dataset.id)));

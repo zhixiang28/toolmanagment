@@ -157,7 +157,7 @@ const state = {
   filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
   teach: null, editingId: null, err: null,
 };
-let sb = null, pollFast = null, pollSlow = null, pollTick = null;
+let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
@@ -171,7 +171,7 @@ function when(ts) {
   const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " " + t;
 }
-function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 15000; }
+function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 30000; }   // the scale reports every 5 s
 function paused() { return state.device?.learn_until && new Date(state.device.learn_until) > new Date(); }
 const needsLook = e => (e.action === "unknown" || e.confidence === "low") && e.id > state.dismissedUpTo && (Date.now() - new Date(e.ts)) < 12 * 3600e3;
 function sortedTools() { return [...state.tools].sort((a, b) => (a.slot || "~").localeCompare(b.slot || "~") || a.name.localeCompare(b.name)); }
@@ -187,28 +187,47 @@ async function boot() {
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const { data } = await sb.auth.getSession();
   state.user = data.session?.user || null;
-  sb.auth.onAuthStateChange((_e, s) => { const was = !!state.user; state.user = s?.user || null; if (was !== !!state.user) route(); });
+  sb.auth.onAuthStateChange((_e, sess) => {
+    const was = !!state.user; state.user = sess?.user || null;
+    if (was !== !!state.user) {
+      updateAuthBtn();
+      if (state.user && state.afterLogin) { const f = state.afterLogin; state.afterLogin = null; $("#dlg").close(); f(); }
+      else renderTab();
+    }
+  });
   route();
 }
-function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); state.user ? startApp() : renderLogin(); }
+function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); startApp(); }
 
 function renderSetup() {
   $("#app").innerHTML = `<div class="center"><h1>Connect to Supabase</h1>
   <p>Open <code>index.html</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> near the top of the script (Supabase &rarr; Project Settings &rarr; API). Then reload this page.</p></div>`;
 }
-function renderLogin(msg) {
-  $("#app").innerHTML = `<div class="center"><h1>Tool Scale</h1>
-  <p>Sign in to see which tools are out.</p>
-  <form id="login"><div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
-  <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
-  <button class="btn" type="submit">Sign in</button>
-  <div class="status-line err" id="lmsg">${esc(msg || "")}</div></form>
-  <p class="hint">No account yet? In Supabase open Authentication &rarr; Users &rarr; Add user.</p></div>`;
+/* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in. */
+function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; }
+function requireAuth(fn) {
+  if (state.user) return fn();
+  state.afterLogin = fn;
+  const d = $("#dlg");
+  d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>Sign in</h2></div>
+    <div class="dlg-b"><p style="margin:0">Sign in with your MR Tracker account to add or edit tools and change scale settings.</p>
+    <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
+    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+    <div class="status-line err" id="lmsg"></div></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn">Sign in</button></div></form>`;
+  d.showModal();
+  $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
   $("#login").onsubmit = async e => {
     e.preventDefault();
     const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
     if (error) $("#lmsg").textContent = error.message;
   };
+}
+
+/* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
+function keepWatching() {
+  if (document.hidden || !sb) return;
+  sb.from("devices").update({ watch_until: new Date(Date.now() + 25000).toISOString() }).eq("device_id", DEVICE_ID).then(() => {}, () => {});
 }
 
 /* ---------- app shell ---------- */
@@ -222,15 +241,17 @@ function startApp() {
   <nav class="tabs" role="tablist">
     ${[["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]].map(([k, l]) =>
       `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
-    <button class="linkbtn" id="signout" style="margin-left:auto;font-size:14px">Sign out</button>
+    <button class="linkbtn" id="authbtn" style="margin-left:auto;font-size:14px"></button>
   </nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
-  $("#signout").onclick = () => sb.auth.signOut();
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  $("#authbtn").onclick = () => state.user ? sb.auth.signOut() : requireAuth(() => {});
+  updateAuthBtn();
   $("#main").addEventListener("click", onMainClick);
   refreshAll().then(() => { renderTab(); });
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
+  keepWatching(); pollWatch = setInterval(keepWatching, 10000);
   pollSlow = setInterval(() => { if (!document.hidden) refreshAll(); }, 4000);
   pollTick = setInterval(() => { if (!state.teach && (state.tab === "board" || state.tab === "tools")) renderTab(); }, 30000);
 }
@@ -291,6 +312,7 @@ function updateLive() {
   $("#liveV").textContent = on && d.live_g != null ? fmtG(d.live_g) : "-";
   const big = $("#bigLive"); if (big) { big.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g" : "-"; }
   const sd = $("#devInfo"); if (sd) sd.innerHTML = devInfo();
+  const ab = $("#accBody"); if (ab) ab.innerHTML = accHtml();
   const tl = $("#teachLive"); if (tl) tl.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g  (" + txt.toLowerCase() + ")" : "scale offline";
 }
 
@@ -447,6 +469,17 @@ function devInfo() {
   const d = state.device; if (!d) return "No scale has registered yet. Power the ESP32 and check its WiFi and key settings.";
   return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
 }
+function accHtml() {
+  const d = state.device, inn = state.tools.filter(t => t.status === "in");
+  if (!d || d.stable_g == null || !online()) return `<p class="hint">Waiting for the scale.</p>`;
+  const exp = inn.reduce((a, t) => a + Number(t.weight_g), 0), act = Number(d.stable_g), err = act - exp;
+  const win = Math.max(3, Math.sqrt(inn.reduce((a, t) => a + Number(t.tol_g) ** 2, 0)));
+  const ok = Math.abs(err) <= win, pct = exp > 0 ? err / exp * 100 : 0;
+  return `<div class="row" style="gap:24px"><div><div class="hint">Tools marked in add up to</div><div class="big num">${fmtG(exp)} g</div></div>
+    <div><div class="hint">Scale reads</div><div class="big num">${fmtG(act)} g</div></div></div>
+    <p class="status-line ${ok ? "ok" : "err"}" style="font-size:16px;margin-top:12px">${ok ? "Matches (" + (err >= 0 ? "+" : "") + fmtG(err) + " g)." :
+    "Off by " + (err >= 0 ? "+" : "") + fmtG(err) + " g" + (exp > 0 ? " (" + fmtG(pct) + "%)" : "") + ". An unregistered item is on the platform, a tool status is wrong, or the scale needs recalibrating."}</p>`;
+}
 function wevRows() {
   return state.wevents.map(w => `<tr><td>${esc(when(w.ts))}</td><td class="num">${fmtG(w.stable_g)} g</td><td class="num">${w.kind === "rebase" ? "-" : (w.delta_g > 0 ? "+" : "") + fmtG(w.delta_g)} g</td><td>${esc(w.kind === "rebase" ? "New baseline" : w.outcome || "")}</td></tr>`).join("") || `<tr><td colspan="4">No readings yet.</td></tr>`;
 }
@@ -456,6 +489,8 @@ function renderScale() {
   <div class="grid2">
     <div class="panel"><h2>Live reading</h2><div class="big num" id="bigLive">-</div>
       <p class="hint">Reads <em>Settled</em> when the weight has stopped changing. Tools are only recognised from settled readings.</p></div>
+    <div class="panel"><h2>Accuracy check</h2><div id="accBody">${accHtml()}</div>
+      <p class="hint">If this is off by the same percentage every time, recalibrate. If it changes with where the tool sits, the platform is the problem.</p></div>
     <div class="panel"><h2>1. Zero</h2><p>Take everything off the platform, wait for <em>Settled</em>, then press Zero.</p>
       <button class="btn" data-act="cmd" data-cmd="tare">Zero the scale</button><div class="status-line" id="msg-tare"></div></div>
     <div class="panel"><h2>2. Calibrate</h2><p>Put a known weight of 500 g to 2 kg on the platform (a water bottle, a bag of sugar) and enter its exact weight. A good result has a factor of about 200 to 450.</p>
@@ -492,14 +527,14 @@ async function onMainClick(ev) {
     if (a === "goto-tools") setTab("tools");
     else if (a === "goto-check") { state.filter = "check"; setTab("activity"); }
     else if (a === "dismiss") { state.dismissedUpTo = state.events[0]?.id || 0; localStorage.setItem("ts_dismissed", state.dismissedUpTo); renderTab(); }
-    else if (a === "add") openDialog(null);
-    else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 }); }
-    else if (a === "edit") openDialog(state.tools.find(t => t.id === el.dataset.id));
+    else if (a === "add") requireAuth(() => openDialog(null));
+    else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); requireAuth(() => openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 })); }
+    else if (a === "edit") requireAuth(() => openDialog(state.tools.find(t => t.id === el.dataset.id)));
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
     else if (a === "flip") { await guard(sb.rpc("set_tool_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); }
-    else if (a === "cmd") { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); }
-    else if (a === "savemin") { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); }
-    else if (a === "pause") { await setLearn(Number(el.dataset.s)); renderScale(); }
+    else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
+    else if (a === "savemin") requireAuth(async () => { try { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); } catch (e) {} });
+    else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });
   } catch (e) { /* banner shown by guard */ }
 }
 

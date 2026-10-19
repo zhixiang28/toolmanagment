@@ -185,23 +185,38 @@ async function guard(p) { try { const r = await p; if (r.error) throw r.error; r
 async function boot() {
   if (SUPABASE_URL.includes("YOUR-PROJECT") || SUPABASE_KEY.startsWith("YOUR_")) return renderSetup();
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  state.user = { anonymous: true };   // open access: no sign-in
+  const { data } = await sb.auth.getSession();
+  state.user = data.session?.user || null;
+  sb.auth.onAuthStateChange((_e, sess) => {
+    const was = !!state.user; state.user = sess?.user || null;
+    if (was !== !!state.user) {
+      updateAuthBtn();
+      if (state.user && state.afterLogin) { const f = state.afterLogin; state.afterLogin = null; $("#dlg").close(); f(); }
+      else renderTab();
+    }
+  });
   route();
 }
-function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); state.user ? startApp() : renderLogin(); }
+function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); startApp(); }
 
 function renderSetup() {
   $("#app").innerHTML = `<div class="center"><h1>Connect to Supabase</h1>
   <p>Open <code>index.html</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> near the top of the script (Supabase &rarr; Project Settings &rarr; API). Then reload this page.</p></div>`;
 }
-function renderLogin(msg) {
-  $("#app").innerHTML = `<div class="center"><h1>Tool Scale</h1>
-  <p>Sign in to see which tools are out.</p>
-  <form id="login"><div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
-  <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
-  <button class="btn" type="submit">Sign in</button>
-  <div class="status-line err" id="lmsg">${esc(msg || "")}</div></form>
-  <p class="hint">No account yet? In Supabase open Authentication &rarr; Users &rarr; Add user.</p></div>`;
+/* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in. */
+function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; }
+function requireAuth(fn) {
+  if (state.user) return fn();
+  state.afterLogin = fn;
+  const d = $("#dlg");
+  d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>Sign in</h2></div>
+    <div class="dlg-b"><p style="margin:0">Sign in with your MR Tracker account to add or edit tools and change scale settings.</p>
+    <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
+    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+    <div class="status-line err" id="lmsg"></div></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn">Sign in</button></div></form>`;
+  d.showModal();
+  $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
   $("#login").onsubmit = async e => {
     e.preventDefault();
     const { error } = await sb.auth.signInWithPassword({ email: $("#em").value.trim(), password: $("#pw").value });
@@ -211,7 +226,7 @@ function renderLogin(msg) {
 
 /* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
 function keepWatching() {
-  if (document.hidden || !sb || !state.user) return;
+  if (document.hidden || !sb) return;
   sb.from("devices").update({ watch_until: new Date(Date.now() + 25000).toISOString() }).eq("device_id", DEVICE_ID).then(() => {}, () => {});
 }
 
@@ -226,10 +241,13 @@ function startApp() {
   <nav class="tabs" role="tablist">
     ${[["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["scale", "Scale"]].map(([k, l]) =>
       `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
+    <button class="linkbtn" id="authbtn" style="margin-left:auto;font-size:14px"></button>
   </nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  $("#authbtn").onclick = () => state.user ? sb.auth.signOut() : requireAuth(() => {});
+  updateAuthBtn();
   $("#main").addEventListener("click", onMainClick);
   refreshAll().then(() => { renderTab(); });
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
@@ -509,14 +527,14 @@ async function onMainClick(ev) {
     if (a === "goto-tools") setTab("tools");
     else if (a === "goto-check") { state.filter = "check"; setTab("activity"); }
     else if (a === "dismiss") { state.dismissedUpTo = state.events[0]?.id || 0; localStorage.setItem("ts_dismissed", state.dismissedUpTo); renderTab(); }
-    else if (a === "add") openDialog(null);
-    else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 }); }
-    else if (a === "edit") openDialog(state.tools.find(t => t.id === el.dataset.id));
+    else if (a === "add") requireAuth(() => openDialog(null));
+    else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); requireAuth(() => openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 })); }
+    else if (a === "edit") requireAuth(() => openDialog(state.tools.find(t => t.id === el.dataset.id)));
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
     else if (a === "flip") { await guard(sb.rpc("set_tool_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); }
-    else if (a === "cmd") { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); }
-    else if (a === "savemin") { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); }
-    else if (a === "pause") { await setLearn(Number(el.dataset.s)); renderScale(); }
+    else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
+    else if (a === "savemin") requireAuth(async () => { try { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); } catch (e) {} });
+    else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });
   } catch (e) { /* banner shown by guard */ }
 }
 

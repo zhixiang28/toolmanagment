@@ -185,16 +185,8 @@ async function guard(p) { try { const r = await p; if (r.error) throw r.error; r
 async function boot() {
   if (SUPABASE_URL.includes("YOUR-PROJECT") || SUPABASE_KEY.startsWith("YOUR_")) return renderSetup();
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  const { data } = await sb.auth.getSession();
-  state.user = data.session?.user || null;
-  sb.auth.onAuthStateChange((_e, sess) => {
-    const was = !!state.user; state.user = sess?.user || null;
-    if (was !== !!state.user) {
-      updateAuthBtn();
-      if (state.user && state.afterLogin) { const f = state.afterLogin; state.afterLogin = null; $("#dlg").close(); f(); }
-      else renderTab();
-    }
-  });
+  try { state.token = localStorage.getItem("ts_token"); state.userName = localStorage.getItem("ts_name"); } catch (e) {}
+  state.user = state.token ? { name: state.userName } : null;
   route();
 }
 function route() { clearInterval(pollFast); clearInterval(pollSlow); clearInterval(pollTick); clearInterval(pollWatch); startApp(); }
@@ -203,39 +195,75 @@ function renderSetup() {
   $("#app").innerHTML = `<div class="center"><h1>Connect to Supabase</h1>
   <p>Open <code>index.html</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> near the top of the script (Supabase &rarr; Project Settings &rarr; API). Then reload this page.</p></div>`;
 }
-/* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in. */
-function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; }
-const COMPANY_DOMAIN = "spacelogic.com.sg";
+/* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in.
+   Accounts are the MR Tracker accounts (email + 4-digit PIN). */
+function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out (" + (state.user.name || "") + ")" : "Sign in"; }
+function setSession(token, name) {
+  state.token = token; state.user = token ? { name } : null;
+  try { if (token) { localStorage.setItem("ts_token", token); localStorage.setItem("ts_name", name || ""); } else { localStorage.removeItem("ts_token"); localStorage.removeItem("ts_name"); } } catch (e) {}
+  updateAuthBtn();
+}
+async function signOut() { const t = state.token; setSession(null); if (t) sb.rpc("toolscale_logout", { p_token: t }).then(() => {}, () => {}); renderTab(); }
+/* call a protected function with the signed-in token; an expired token signs the user out */
+async function rpcAuth(fn, args) {
+  const r = await sb.rpc(fn, { p_token: state.token, ...args });
+  if (r.error && /sign in again/i.test(r.error.message || "")) { setSession(null); renderTab(); }
+  return r;
+}
+async function sendEmail(to, subject, html) {
+  const r = await fetch(SUPABASE_URL + "/functions/v1/send-email", { method: "POST",
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY }, body: JSON.stringify({ to, subject, html }) });
+  const j = await r.json().catch(() => ({})); if (!j.success) throw new Error(j.error || "Could not send the email.");
+}
+async function doSignIn(email, pin, msg) {
+  const { data, error } = await sb.rpc("toolscale_login", { p_email: email, p_pin: pin });
+  if (error || !data?.success) { msg.className = "status-line err"; msg.textContent = error?.message || data?.error || "Sign in failed."; return false; }
+  setSession(data.token, data.name);
+  const d = $("#dlg"); d.close();
+  const f = state.afterLogin; state.afterLogin = null;
+  if (f) f(); else renderTab();
+  return true;
+}
 function requireAuth(fn, mode) {
   if (state.user) return fn();
   state.afterLogin = fn;
-  const up = mode === "signup", d = $("#dlg");
-  d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>${up ? "Create account" : "Sign in"}</h2></div>
-    <div class="dlg-b"><p style="margin:0">${up ? "Register with your company email (@" + COMPANY_DOMAIN + ")." : "Sign in to add or edit tools and change scale settings."}</p>
+  const d = $("#dlg"); let step = 1, pending = null;
+  const up = mode === "signup";
+  const draw = () => {
+    const code = up && step === 2;
+    d.innerHTML = `<form method="dialog" id="login"><div class="dlg-h"><h2>${up ? "Create account" : "Sign in"}</h2></div>
+    <div class="dlg-b"><p style="margin:0">${code ? "Enter the 6-digit code we emailed to " + esc(pending.email) + "." : up ? "Register with your company email (@" + COMPANY_DOMAIN + "). This is the same account as MR Tracker." : "Sign in with your MR Tracker email and 4-digit PIN to add or edit tools and change scale settings."}</p>
+    ${code ? `<div><label for="cd">Verification code</label><input id="cd" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>` : `
+    ${up ? `<div><label for="nm">Full name</label><input id="nm" type="text" autocomplete="name" maxlength="60" required></div>` : ""}
     <div><label for="em">Email</label><input id="em" type="email" autocomplete="username" required ${up ? `placeholder="name@${COMPANY_DOMAIN}"` : ""}></div>
-    <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="${up ? "new-password" : "current-password"}" minlength="${up ? 8 : 1}" required></div>
-    ${up ? `<div><label for="pw2">Repeat password</label><input id="pw2" type="password" autocomplete="new-password" minlength="8" required></div>` : ""}
+    <div><label for="pw">${up ? "Choose a 4-digit PIN" : "PIN"}</label><input id="pw" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" autocomplete="${up ? "new-password" : "current-password"}" required></div>`}
     <div class="status-line err" id="lmsg"></div>
     <button type="button" class="linkbtn" id="lswitch" style="color:var(--steel);justify-self:start;padding:0">${up ? "Already have an account? Sign in" : "New user? Create an account"}</button></div>
-    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn">${up ? "Create account" : "Sign in"}</button></div></form>`;
-  if (!d.open) d.showModal();
-  $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
-  $("#lswitch").onclick = () => requireAuth(fn, up ? "signin" : "signup");
-  $("#login").onsubmit = async e => {
-    e.preventDefault();
-    const email = $("#em").value.trim(), pw = $("#pw").value, msg = $("#lmsg");
-    msg.className = "status-line err";
-    if (up) {
-      if (!email.toLowerCase().endsWith("@" + COMPANY_DOMAIN)) { msg.textContent = "Use your company email (@" + COMPANY_DOMAIN + ")."; return; }
-      if (pw !== $("#pw2").value) { msg.textContent = "The passwords do not match."; return; }
-      const { data, error } = await sb.auth.signUp({ email, password: pw });
-      if (error) { msg.textContent = error.message; return; }
-      if (!data.session) { msg.className = "status-line ok"; msg.textContent = "Account created. Check your email for a confirmation link, then sign in."; }
-      return;
-    }
-    const { error } = await sb.auth.signInWithPassword({ email, password: pw });
-    if (error) msg.textContent = error.message;
+    <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn" id="lgo">${code ? "Verify" : up ? "Send code" : "Sign in"}</button></div></form>`;
+    $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
+    $("#lswitch").onclick = () => requireAuth(fn, up ? "signin" : "signup");
+    $("#login").onsubmit = onSubmit;
   };
+  const onSubmit = async e => {
+    e.preventDefault();
+    const msg = $("#lmsg"), btn = $("#lgo"); msg.className = "status-line err"; msg.textContent = ""; btn.disabled = true;
+    try {
+      if (!up) { await doSignIn($("#em").value.trim(), $("#pw").value, msg); return; }
+      if (step === 1) {
+        const email = $("#em").value.trim().toLowerCase(), name = $("#nm").value.trim(), pin = $("#pw").value;
+        if (!email.endsWith("@" + COMPANY_DOMAIN)) { msg.textContent = "Use your company email (@" + COMPANY_DOMAIN + ")."; return; }
+        const { data, error } = await sb.rpc("start_registration", { p_name: name, p_pin: pin, p_email: email });
+        if (error || !data?.success) { msg.textContent = error?.message || data?.error || "Could not start sign-up."; return; }
+        await sendEmail(data.email, data.subject, data.html);
+        pending = { email: data.email, pin }; step = 2; draw(); return;
+      }
+      const { data, error } = await sb.rpc("verify_registration", { p_email: pending.email, p_code: $("#cd").value.trim() });
+      if (error || !data?.success) { msg.textContent = error?.message || data?.error || "That code did not work."; return; }
+      await doSignIn(pending.email, pending.pin, msg);
+    } catch (err) { msg.textContent = err.message || String(err); }
+    finally { const b = $("#lgo"); if (b) b.disabled = false; }
+  };
+  draw(); if (!d.open) d.showModal();
 }
 
 /* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
@@ -260,7 +288,7 @@ function startApp() {
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
-  $("#authbtn").onclick = () => state.user ? sb.auth.signOut() : requireAuth(() => {});
+  $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn();
   $("#main").addEventListener("click", onMainClick);
   refreshAll().then(() => { renderTab(); });
@@ -292,7 +320,7 @@ async function refreshDevice() {
 async function refreshAll() {
   try {
     const [tools, events] = await Promise.all([
-      guard(sb.from("tools").select("*").order("name")),
+      guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
     ]);
     await refreshDevice();
@@ -390,17 +418,13 @@ function openDialog(tool, prefill) {
   $("#f_cancel").onclick = closeDialog; d.oncancel = () => stopTeach();
   $("#f_del")?.addEventListener("click", async () => {
     if (!confirm(`Delete ${tool.name}? Its history stays in the activity log.`)) return;
-    await guard(sb.from("tools").delete().eq("id", tool.id)); await refreshAll(); closeDialog();
+    await guard(rpcAuth("toolscale_delete_tool", { p_id: tool.id })); await refreshAll(); closeDialog();
   });
   $("#toolForm").onsubmit = async e => {
     e.preventDefault();
     const row = { name: $("#f_name").value.trim(), slot: $("#f_slot").value.trim() || null, weight_g: Number($("#f_w").value), tol_g: Number($("#f_t").value) };
     if (!row.name || !(row.weight_g > 0)) return;
-    if (tool) await guard(sb.from("tools").update(row).eq("id", tool.id));
-    else {
-      const r = await guard(sb.from("tools").insert(row).select("id").single());
-      if (state.prefill?.out) await guard(sb.rpc("set_tool_status", { p_tool: r.id, p_status: "out" }));   // it was taken out of the box
-    }
+    await guard(rpcAuth("toolscale_save_tool", { p_id: tool ? tool.id : null, p_name: row.name, p_slot: row.slot, p_weight: row.weight_g, p_tol: row.tol_g, p_out: !tool && !!state.prefill?.out }));
     await refreshAll(); closeDialog(); toast(tool ? "Saved" : row.name + " added");
   };
 }
@@ -437,8 +461,7 @@ function renderTeach() {
   $("#teachStop").onclick = stopTeach; updateLive();
 }
 async function setLearn(seconds) {
-  const until = seconds ? new Date(Date.now() + seconds * 1000).toISOString() : null;
-  await guard(sb.from("devices").update({ learn_until: until }).eq("device_id", DEVICE_ID)); await refreshDevice();
+  await guard(rpcAuth("toolscale_set_learn", { p_device: DEVICE_ID, p_seconds: seconds || 0 })); await refreshDevice();
 }
 async function startTeach(mode) {
   const last = await guard(sb.from("weight_events").select("id").order("id", { ascending: false }).limit(1));
@@ -524,7 +547,7 @@ async function runCommand(cmd) {
   if (cmd === "calibrate" && !(arg >= 200)) { msg.className = "status-line err"; msg.textContent = "Use a known weight of at least 200 g (500 g to 2 kg is best). Light weights give a bad calibration."; return; }
   if (!online()) { msg.className = "status-line err"; msg.textContent = "The scale is offline. Check power and WiFi."; return; }
   msg.className = "status-line"; msg.textContent = "Sent. Waiting for the scale...";
-  const row = await guard(sb.from("device_commands").insert({ device_id: DEVICE_ID, cmd, arg }).select("id").single());
+  const rowId = await guard(rpcAuth("toolscale_send_command", { p_device: DEVICE_ID, p_cmd: cmd, p_arg: arg })); const row = { id: rowId };
   for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 1000));
     const r = await guard(sb.from("device_commands").select("status,result").eq("id", row.id).single());
@@ -547,7 +570,7 @@ async function onMainClick(ev) {
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
     else if (a === "flip") { await guard(sb.rpc("set_tool_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); }
     else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
-    else if (a === "savemin") requireAuth(async () => { try { await guard(sb.from("devices").update({ min_change_g: Number($("#minG").value) }).eq("device_id", DEVICE_ID)); toast("Saved"); refreshDevice(); } catch (e) {} });
+    else if (a === "savemin") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_min_change", { p_device: DEVICE_ID, p_g: Number($("#minG").value) })); toast("Saved"); refreshDevice(); } catch (e) {} });
     else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });
   } catch (e) { /* banner shown by guard */ }
 }

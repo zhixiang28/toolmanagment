@@ -209,7 +209,8 @@ function renderSetup() {
 }
 /* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in.
    Accounts are the MR Tracker accounts (email + 4-digit PIN). */
-function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out (" + (state.user.name || "") + ")" : "Sign in"; }
+const COMPANY_DOMAIN = "spacelogic.com.sg";
+function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; b.title = state.user?.name ? "Signed in as " + state.user.name : ""; }
 function setSession(token, name) {
   state.token = token; state.user = token ? { name } : null;
   try { if (token) { localStorage.setItem("ts_token", token); localStorage.setItem("ts_name", name || ""); } else { localStorage.removeItem("ts_token"); localStorage.removeItem("ts_name"); } } catch (e) {}
@@ -292,11 +293,11 @@ function startApp() {
     <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button></div>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
+    <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
   <nav class="tabs" role="tablist">
     ${TABS[state.mode].map(([k, l]) =>
       `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
-    <button class="linkbtn" id="authbtn" style="margin-left:auto;font-size:14px"></button>
   </nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;

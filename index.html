@@ -268,8 +268,8 @@ function requireAuth(fn, mode) {
 
 /* While this page is open, ask the scale to report every 1.5 s instead of every 5 s */
 function keepWatching() {
-  if (document.hidden || !sb) return;
-  sb.from("devices").update({ watch_until: new Date(Date.now() + 25000).toISOString() }).eq("device_id", DEVICE_ID).then(() => {}, () => {});
+  if (document.hidden || !sb || !state.token) return;   // faster reporting only while a signed-in user has the page open
+  rpcAuth("toolscale_watch", { p_device: DEVICE_ID }).then(() => {}, () => {});
 }
 
 /* ---------- app shell ---------- */
@@ -568,7 +568,7 @@ async function onMainClick(ev) {
     else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); requireAuth(() => openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 })); }
     else if (a === "edit") requireAuth(() => openDialog(state.tools.find(t => t.id === el.dataset.id)));
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
-    else if (a === "flip") { await guard(sb.rpc("set_tool_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); }
+    else if (a === "flip") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); } catch (e) {} });
     else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
     else if (a === "savemin") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_min_change", { p_device: DEVICE_ID, p_g: Number($("#minG").value) })); toast("Saved"); refreshDevice(); } catch (e) {} });
     else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });

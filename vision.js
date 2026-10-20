@@ -5,7 +5,7 @@
 (function () {
   const MODEL_URL = "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json";
   const NODE = "module_apply_default/MobilenetV2/Logits/AvgPool";   // the 1280-number feature layer
-  const VERSION = "4", DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
+  const VERSION = "5", DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
   const V = { fps: 0, model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
     action: 0, record: true, tally: {}, lastKey: null, streak: 0, emptyStreak: 0, armed: true, recent: [], centered: null, mean: null, busy: false };
   try { const r = Number(localStorage.getItem("v_roi")); if (r >= 0.3 && r <= 1) V.roi = r; } catch (e) {}
@@ -68,7 +68,7 @@
     return V.stream;
   }
   function stopCamera() { if (V.stream) { V.stream.getTracks().forEach(t => t.stop()); V.stream = null; } }
-  function stop() { V.view = null; V.running = false; clearTimeout(V.timer); stopCamera(); }
+  function stop() { clearInterval(V.prevTimer); V.view = null; V.running = false; clearTimeout(V.timer); stopCamera(); }
 
   const itemName = k => { if (k === "empty") return "Empty"; const i = state.citems.find(x => x.id === k); return i ? i.name + (i.spec ? " " + i.spec : "") : "Unknown item"; };
   const counts = () => { const c = {}; V.samples.forEach(s => c[s.key] = (c[s.key] || 0) + 1); return c; };
@@ -76,8 +76,15 @@
   /* ---------- shared camera panel ---------- */
   function camHtml() {
     return `<div class="vcam"><video id="vVid" playsinline muted autoplay></video><div class="vroi" id="vRoi"></div></div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:12px"><canvas id="vSees" width="112" height="112" style="width:112px;height:112px;background:#000;border:2px solid var(--ink);flex:none"></canvas>
+      <p class="hint" style="margin:0"><strong>What it sees.</strong> This is the picture it learns from and compares. Train and identify with the part about this size, filling about half of it.</p></div>
     <div class="row" style="margin-top:12px"><div class="field"><label for="vCam">Camera</label><select id="vCam" class="sel"></select></div>
       <div class="field"><label for="vRoiR">Look at the middle ${Math.round(V.roi * 100)}% of the picture</label><input id="vRoiR" type="range" min="30" max="100" step="5" value="${Math.round(V.roi * 100)}"></div></div>`;
+  }
+  function drawPreview() {
+    const v = $("#vVid"), c = $("#vSees"); if (!v || !c || v.readyState < 2 || !v.videoWidth) return;
+    const w = v.videoWidth, h = v.videoHeight, side = Math.max(32, Math.round(V.roi * Math.min(h, w)));
+    c.getContext("2d").drawImage(v, Math.floor((w - side) / 2), Math.floor((h - side) / 2), side, side, 0, 0, c.width, c.height);
   }
   function placeRoi() {
     const v = $("#vVid"), r = $("#vRoi"); if (!v || !r) return;
@@ -95,6 +102,7 @@
       sel.onchange = async () => { try { localStorage.setItem("v_cam", sel.value); } catch (e) {} await startCamera(v, sel.value); placeRoi(); };
       $("#vRoiR").oninput = e => { V.roi = Number(e.target.value) / 100; try { localStorage.setItem("v_roi", V.roi); } catch (x) {} placeRoi(); e.target.previousElementSibling.textContent = `Look at the middle ${e.target.value}% of the picture`; };
       v.onloadedmetadata = placeRoi; window.onresize = placeRoi; setTimeout(placeRoi, 300); placeRoi();
+      clearInterval(V.prevTimer); V.prevTimer = setInterval(drawPreview, 150);
       return true;
     } catch (e) {
       statusEl.className = "status-line err"; statusEl.textContent = e.name === "NotAllowedError" ? "Camera permission was blocked. Allow the camera for this site, then reload." : (e.message || String(e)); return false;

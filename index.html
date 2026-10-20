@@ -198,7 +198,7 @@ try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; s
 const devId = () => SCALES[state.mode] || DEVICE_ID;
 const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
                count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]],
-               vision: [["identify", "Identify"], ["train", "Train"], ["vlog", "Log"]] };
+               vision: [["identify", "Identify"], ["detect", "Detect"], ["label", "Label"], ["train", "Train"], ["vlog", "Log"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -364,8 +364,9 @@ function labelTables() {
 }
 function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
+  if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
-  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog })[state.tab](); renderBanner(); renderAlert(); labelTables();
+  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel })[state.tab](); renderBanner(); renderAlert(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -401,7 +402,7 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
   } catch (e) { /* banner already shown */ }
 }
@@ -795,7 +796,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "6";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "7";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -806,11 +807,21 @@ function ensureVision() {   // one shared load, so opening Vision and switching 
   return visionLoading;
 }
 async function visionPage(fn) {
+  const tab = state.tab;   // a slow or failed load must not touch a different tab the user has moved to
   $("#main").innerHTML = `<div class="empty"><p>Loading camera tools...</p></div>`;
-  try { await ensureVision(); window.VisionUI[fn](); }
-  catch (e) { $("#main").innerHTML = `<div class="banner"><span>Could not load the camera tools: ${esc(e.message || e)}</span></div>`; }
+  try { await ensureVision(); if (state.tab !== tab) return; window.VisionUI[fn](); }
+  catch (e) { if (state.tab !== tab) return; $("#main").innerHTML = `<div class="banner"><span>Could not load the camera tools: ${esc(e.message || e)}</span></div>`; }
+}
+let detectLoading = null;
+function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
+async function detectPage(fn) {
+  const tab = state.tab;
+  $("#main").innerHTML = `<div class="empty"><p>Loading...</p></div>`;
+  try { await ensureDetect(); if (state.tab !== tab) return; window.DetectUI[fn](); }
+  catch (e) { if (state.tab !== tab) return; $("#main").innerHTML = `<div class="banner"><span>Could not load this page: ${esc(e.message || e)}</span></div>`; }
 }
 const renderIdentify = () => visionPage("identify"), renderTrain = () => visionPage("train"), renderVlog = () => visionPage("vlog");
+const renderDetect = () => detectPage("detect"), renderLabel = () => detectPage("label");
 
 /* ---------- clicks ---------- */
 async function onMainClick(ev) {

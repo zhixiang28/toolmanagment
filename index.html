@@ -795,11 +795,15 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "5";   // bump when vision.js changes so browsers do not keep an old copy
-async function ensureVision() {
-  if (window.VisionUI) return;
-  if (!window.tf) { try { await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } catch (e) { await loadScript("https://unpkg.com/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } }
-  await loadScript("vision.js?v=" + VISION_V);
+const VISION_V = "6";   // bump when vision.js changes so browsers do not keep an old copy
+let visionLoading = null;
+function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
+  if (window.VisionUI) return Promise.resolve();
+  visionLoading = visionLoading || (async () => {
+    if (!window.tf) { try { await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } catch (e) { await loadScript("https://unpkg.com/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } }
+    await loadScript("vision.js?v=" + VISION_V);
+  })().catch(e => { visionLoading = null; throw e; });
+  return visionLoading;
 }
 async function visionPage(fn) {
   $("#main").innerHTML = `<div class="empty"><p>Loading camera tools...</p></div>`;

@@ -5,7 +5,7 @@
 (function () {
   const MODEL_URL = "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json";
   const NODE = "module_apply_default/MobilenetV2/Logits/AvgPool";   // the 1280-number feature layer
-  const DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
+  const VERSION = "4", DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
   const V = { fps: 0, model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
     action: 0, record: true, tally: {}, lastKey: null, streak: 0, emptyStreak: 0, armed: true, recent: [], centered: null, mean: null, busy: false };
   try { const r = Number(localStorage.getItem("v_roi")); if (r >= 0.3 && r <= 1) V.roi = r; } catch (e) {}
@@ -15,9 +15,10 @@
   function encode(vec) {   // float32 -> int8 -> base64 (about 1.7 KB per sample)
     let m = 0; for (const x of vec) m = Math.max(m, Math.abs(x)); const k = m ? 127 / m : 0, q = new Int8Array(vec.length);
     for (let i = 0; i < vec.length; i++) q[i] = Math.round(vec[i] * k);
-    return b64(new Uint8Array(q.buffer));
+    return "r" + Math.round(V.roi * 100) + ":" + b64(new Uint8Array(q.buffer));   // the view size is kept with the sample
   }
-  function decode(s) { const bin = atob(s), u = new Int8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i) << 24 >> 24; return Float32Array.from(u); }
+  const roiOf = s => { const m = /^r(\d+):/.exec(s); return m ? Number(m[1]) / 100 : null; };
+  function decode(s) { s = s.replace(/^r\d+:/, ""); const bin = atob(s), u = new Int8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i) << 24 >> 24; return Float32Array.from(u); }
   function unit(v) { let n = 0; for (const x of v) n += x * x; n = Math.sqrt(n) || 1; return v.map(x => x / n); }
 
   function rebuild() {   // centre the fingerprints so that "similar" really means similar, then group by class
@@ -49,6 +50,8 @@
     if (V.loaded && !force) return;
     const rows = await guard(sb.from("vision_samples").select("class_key,item_id,emb").eq("active", true).limit(3000));
     V.samples = rows.map(r => ({ key: r.class_key, item: r.item_id, raw: decode(r.emb) })); V.loaded = true; rebuild();
+    const rc = {}; rows.forEach(r => { const x = roiOf(r.emb); if (x) rc[x] = (rc[x] || 0) + 1; }); const best = Object.entries(rc).sort((a, b) => b[1] - a[1])[0];
+    V.trainRoi = best ? Number(best[0]) : null;
   }
   function embed(video) {
     return tf.tidy(() => {
@@ -103,7 +106,7 @@
     stop(); const me = V.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Identify</h1><p>Drop one fastener at a time into the dashed square. It names the fastener and records it.</p></div></div>
       <div class="grid2"><div class="panel">${camHtml()}</div>
-      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p><p class="hint" id="vScores"></p>
+      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p><p class="hint" id="vScores"></p><p class="hint">Recogniser version ${VERSION}</p>
         <div class="row" style="margin-top:12px"><div class="field"><label for="vAct">When it sees a fastener</label><select id="vAct" class="sel"><option value="0">Just log it</option><option value="1">Add 1 to stock</option><option value="-1">Take 1 from stock</option></select></div></div>
         <label style="margin-top:12px;display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="vRec" ${V.record ? "checked" : ""}> Record what it sees</label>
         <p class="hint" id="vNote"></p></div></div>
@@ -114,13 +117,14 @@
     if (!(await setupCamera(st))) return; if (V.view !== me) { if (!V.view) stopCamera(); return; }
     try { await Promise.all([ensureModel(), loadSamples(true)]); } catch (e) { if (V.view === me) { st.className = "status-line err"; st.textContent = "Could not load the recogniser: " + (e.message || e); } return; }
     if (V.view !== me) { stopCamera(); return; }
+    let roiNote = ""; if (V.trainRoi && Math.abs(V.trainRoi - V.roi) > 0.01) { V.roi = V.trainRoi; try { localStorage.setItem("v_roi", V.roi); } catch (e) {} const sl = $("#vRoiR"); if (sl) { sl.value = Math.round(V.roi * 100); sl.previousElementSibling.textContent = `Look at the middle ${sl.value}% of the picture`; } placeRoi(); roiNote = "Using the same view size as when it was trained (" + Math.round(V.roi * 100) + "%). "; }
     const cs = counts(), fast = Object.keys(cs).filter(k => k !== "empty").length;
     if (!cs.empty || !fast) {
       st.className = "status-line err"; st.innerHTML = `<strong>It cannot name anything yet.</strong> It needs both of these on the Train tab:<br>
         ${cs.empty ? "&#10003;" : "&#10007;"} <strong>Empty</strong> (nothing in the square): ${cs.empty || 0} samples, needs 20<br>
         ${fast ? "&#10003;" : "&#10007;"} At least one fastener: ${fast} trained<br><button class="btn" style="margin-top:8px" id="vGoTrain">Go to Train</button>`;
       $("#vGoTrain").onclick = () => setTab("train");
-    } else { st.className = "status-line"; st.textContent = "Ready."; }
+    } else { st.className = "status-line"; st.textContent = roiNote + "Ready."; }
     V.running = true; V.lastKey = null; V.streak = 0; V.emptyStreak = 0; V.armed = true; loop();
   }
   function paintNote() {

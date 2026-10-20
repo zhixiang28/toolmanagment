@@ -6,7 +6,7 @@
   const MODEL_URL = "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json";
   const NODE = "module_apply_default/MobilenetV2/Logits/AvgPool";   // the 1280-number feature layer
   const DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
-  const V = { model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
+  const V = { fps: 0, model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
     action: 0, record: true, tally: {}, lastKey: null, streak: 0, emptyStreak: 0, armed: true, recent: [], centered: null, mean: null, busy: false };
   try { const r = Number(localStorage.getItem("v_roi")); if (r >= 0.3 && r <= 1) V.roi = r; } catch (e) {}
 
@@ -103,7 +103,7 @@
     stop(); const me = V.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Identify</h1><p>Drop one fastener at a time into the dashed square. It names the fastener and records it.</p></div></div>
       <div class="grid2"><div class="panel">${camHtml()}</div>
-      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p>
+      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p><p class="hint" id="vScores"></p>
         <div class="row" style="margin-top:12px"><div class="field"><label for="vAct">When it sees a fastener</label><select id="vAct" class="sel"><option value="0">Just log it</option><option value="1">Add 1 to stock</option><option value="-1">Take 1 from stock</option></select></div></div>
         <label style="margin-top:12px;display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="vRec" ${V.record ? "checked" : ""}> Record what it sees</label>
         <p class="hint" id="vNote"></p></div></div>
@@ -139,10 +139,12 @@
         if (p && L) {
           const ok = p.conf >= MIN_CONF; L.textContent = ok ? (p.key === "empty" ? "Nothing in view" : itemName(p.key)) : "Not sure"; L.style.opacity = ok ? 1 : .45;
           if (st && !st.classList.contains("err")) st.textContent = ok ? Math.round(p.conf * 100) + "% sure" : "Best guess: " + itemName(p.key) + " (" + Math.round(p.conf * 100) + "%)";
+          const sc = $("#vScores"); if (sc) sc.textContent = p.ranks.map(r => itemName(r.key) + " " + Math.round(Math.exp(20 * (r.s - p.ranks[0].s)) * p.conf * 100) + "%").join("  |  ") + "  (" + V.fps + " frames/s)";
           step(ok ? p.key : null, p.conf);
-        }
-      }
-    } catch (e) {}
+        } else if (!p) { const sc = $("#vScores"); if (sc) sc.textContent = "No trained classes loaded."; }
+        V.frames = (V.frames || 0) + 1; const now = Date.now(); if (!V.t0 || now - V.t0 > 2000) { V.fps = V.t0 ? Math.round(V.frames / ((now - V.t0) / 1000) * 10) / 10 : 0; V.t0 = now; V.frames = 0; }
+      } else { const st = $("#vStatus"); if (st && v && v.readyState < 2) { st.className = "status-line err"; st.textContent = "Waiting for the camera picture..."; } }
+    } catch (e) { const st = $("#vStatus"); if (st) { st.className = "status-line err"; st.textContent = "Recogniser error: " + (e.message || e); } }
     V.timer = setTimeout(loop, 120);
   }
   function step(key, conf) {

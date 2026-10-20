@@ -5,7 +5,7 @@
    3. A nearest-neighbour check against the trained samples (kept in the shared database) names the part, or says it is unknown.
    Loaded on demand by index.html, which also provides: state, $, esc, when, toast, guard, rpcAuth, requireAuth, refreshAll, setTab, sb. */
 (function () {
-  const VERSION = "6";
+  const VERSION = "7";
   const MODEL_URL = "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json";
   const NODE = "module_apply_default/MobilenetV2/Logits/AvgPool";   // the 1280-number feature layer
   const DIM = 1280, AW = 320, STREAK = 3, ABSENT = 4, MAX_AREA = 0.3, MIN_AREA = 40, PAD = 1.5, TAG = "v2:";
@@ -105,7 +105,7 @@
     return V.stream;
   }
   function stopCamera() { if (V.stream) { V.stream.getTracks().forEach(t => t.stop()); V.stream = null; } }
-  function stop() { V.view = null; V.running = false; clearTimeout(V.timer); stopCamera(); }
+  function stop() { V.view = null; V.running = false; clearTimeout(V.timer); stopCamera(); window.DetectUI?.stop(); }
 
   const itemName = k => { const i = state.citems.find(x => x.id === k); return i ? i.name + (i.spec ? " " + i.spec : "") : "Unknown item"; };
   const counts = () => { const c = {}; V.samples.forEach(s => c[s.key] = (c[s.key] || 0) + 1); return c; };
@@ -290,7 +290,7 @@
     try {
       const rows = await guard(sb.from("vision_events").select("*").order("id", { ascending: false }).limit(100));
       $("#vlogBody").innerHTML = rows.length ? `<ul class="log">${rows.map(r => `<li><div class="t">${esc(when(r.ts))}</div><div><div class="what">${esc(r.item_name || "")}${r.delta ? " (" + (r.delta > 0 ? "+1 stock" : "-1 stock") + ")" : ""}</div>
-        <div class="note">${Math.round(Number(r.score) * 100)}% sure${r.person ? " &middot; " + esc(r.person) : ""}</div></div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing recorded yet.</p></div>`;
+        <div class="note">${r.score != null ? Math.round(Number(r.score) * 100) + "% sure" : esc(r.note || "")}${r.person ? " &middot; " + esc(r.person) : ""}</div></div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing recorded yet.</p></div>`;
     } catch (e) {}
   }
 

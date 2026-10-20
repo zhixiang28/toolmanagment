@@ -6,7 +6,7 @@
   const MODEL_URL = "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json";
   const NODE = "module_apply_default/MobilenetV2/Logits/AvgPool";   // the 1280-number feature layer
   const DIM = 1280, MIN_CONF = 0.8, STREAK = 4, KEEP_PER_CLASS = 80;
-  const V = { model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
+  const V = { fps: 0, model: null, loading: null, samples: [], loaded: false, stream: null, timer: null, running: false, roi: 0.6, cls: "empty",
     action: 0, record: true, tally: {}, lastKey: null, streak: 0, emptyStreak: 0, armed: true, recent: [], centered: null, mean: null, busy: false };
   try { const r = Number(localStorage.getItem("v_roi")); if (r >= 0.3 && r <= 1) V.roi = r; } catch (e) {}
 
@@ -65,7 +65,7 @@
     return V.stream;
   }
   function stopCamera() { if (V.stream) { V.stream.getTracks().forEach(t => t.stop()); V.stream = null; } }
-  function stop() { V.running = false; clearTimeout(V.timer); stopCamera(); }
+  function stop() { V.view = null; V.running = false; clearTimeout(V.timer); stopCamera(); }
 
   const itemName = k => { if (k === "empty") return "Empty"; const i = state.citems.find(x => x.id === k); return i ? i.name + (i.spec ? " " + i.spec : "") : "Unknown item"; };
   const counts = () => { const c = {}; V.samples.forEach(s => c[s.key] = (c[s.key] || 0) + 1); return c; };
@@ -100,10 +100,10 @@
 
   /* ---------- Identify ---------- */
   async function identify() {
-    stop();
+    stop(); const me = V.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Identify</h1><p>Drop one fastener at a time into the dashed square. It names the fastener and records it.</p></div></div>
       <div class="grid2"><div class="panel">${camHtml()}</div>
-      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p>
+      <div class="panel"><h2>Seen now</h2><div class="bigcount" id="vLabel" style="font-size:44px">...</div><p class="status-line" id="vStatus">Loading the recogniser...</p><p class="hint" id="vScores"></p>
         <div class="row" style="margin-top:12px"><div class="field"><label for="vAct">When it sees a fastener</label><select id="vAct" class="sel"><option value="0">Just log it</option><option value="1">Add 1 to stock</option><option value="-1">Take 1 from stock</option></select></div></div>
         <label style="margin-top:12px;display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="vRec" ${V.record ? "checked" : ""}> Record what it sees</label>
         <p class="hint" id="vNote"></p></div></div>
@@ -111,11 +111,16 @@
     $("#vAct").value = String(V.action); $("#vAct").onchange = e => { V.action = Number(e.target.value); };
     $("#vRec").onchange = e => { V.record = e.target.checked; paintNote(); };
     const st = $("#vStatus"); paintNote(); paintTally();
-    if (!(await setupCamera(st))) return;
-    try { await Promise.all([ensureModel(), loadSamples(true)]); } catch (e) { st.className = "status-line err"; st.textContent = "Could not load the recogniser: " + (e.message || e); return; }
-    const cs = counts(), n = Object.keys(cs).length;
-    if (n < 2 || !cs.empty) { st.className = "status-line err"; st.textContent = !cs.empty ? 'Not trained yet. On the Train tab, teach it "Empty" and at least one fastener.' : "Teach it at least one fastener on the Train tab."; }
-    else { st.className = "status-line"; st.textContent = "Ready."; }
+    if (!(await setupCamera(st))) return; if (V.view !== me) { if (!V.view) stopCamera(); return; }
+    try { await Promise.all([ensureModel(), loadSamples(true)]); } catch (e) { if (V.view === me) { st.className = "status-line err"; st.textContent = "Could not load the recogniser: " + (e.message || e); } return; }
+    if (V.view !== me) { stopCamera(); return; }
+    const cs = counts(), fast = Object.keys(cs).filter(k => k !== "empty").length;
+    if (!cs.empty || !fast) {
+      st.className = "status-line err"; st.innerHTML = `<strong>It cannot name anything yet.</strong> It needs both of these on the Train tab:<br>
+        ${cs.empty ? "&#10003;" : "&#10007;"} <strong>Empty</strong> (nothing in the square): ${cs.empty || 0} samples, needs 20<br>
+        ${fast ? "&#10003;" : "&#10007;"} At least one fastener: ${fast} trained<br><button class="btn" style="margin-top:8px" id="vGoTrain">Go to Train</button>`;
+      $("#vGoTrain").onclick = () => setTab("train");
+    } else { st.className = "status-line"; st.textContent = "Ready."; }
     V.running = true; V.lastKey = null; V.streak = 0; V.emptyStreak = 0; V.armed = true; loop();
   }
   function paintNote() {
@@ -134,10 +139,12 @@
         if (p && L) {
           const ok = p.conf >= MIN_CONF; L.textContent = ok ? (p.key === "empty" ? "Nothing in view" : itemName(p.key)) : "Not sure"; L.style.opacity = ok ? 1 : .45;
           if (st && !st.classList.contains("err")) st.textContent = ok ? Math.round(p.conf * 100) + "% sure" : "Best guess: " + itemName(p.key) + " (" + Math.round(p.conf * 100) + "%)";
+          const sc = $("#vScores"); if (sc) sc.textContent = p.ranks.map(r => itemName(r.key) + " " + Math.round(Math.exp(20 * (r.s - p.ranks[0].s)) * p.conf * 100) + "%").join("  |  ") + "  (" + V.fps + " frames/s)";
           step(ok ? p.key : null, p.conf);
-        }
-      }
-    } catch (e) {}
+        } else if (!p) { const sc = $("#vScores"); if (sc) sc.textContent = "No trained classes loaded."; }
+        V.frames = (V.frames || 0) + 1; const now = Date.now(); if (!V.t0 || now - V.t0 > 2000) { V.fps = V.t0 ? Math.round(V.frames / ((now - V.t0) / 1000) * 10) / 10 : 0; V.t0 = now; V.frames = 0; }
+      } else { const st = $("#vStatus"); if (st && v && v.readyState < 2) { st.className = "status-line err"; st.textContent = "Waiting for the camera picture..."; } }
+    } catch (e) { const st = $("#vStatus"); if (st) { st.className = "status-line err"; st.textContent = "Recogniser error: " + (e.message || e); } }
     V.timer = setTimeout(loop, 120);
   }
   function step(key, conf) {
@@ -156,7 +163,7 @@
 
   /* ---------- Train ---------- */
   async function train() {
-    stop(); const items = state.citems;
+    stop(); const me = V.view = {}; const items = state.citems;
     $("#main").innerHTML = `<div class="summary"><div><h1>Train</h1><p>Show it each fastener so it learns what it looks like. Takes about a minute per type.</p></div></div>
       <div class="grid2"><div class="panel">${camHtml()}</div>
       <div class="panel"><h2>1. Pick what is in the square</h2><div class="field"><label for="tCls">Showing</label><select id="tCls" class="sel"><option value="empty">Empty (nothing in view)</option>${items.map(i => `<option value="${i.id}">${esc(i.name)}${i.spec ? " (" + esc(i.spec) + ")" : ""}</option>`).join("")}</select></div>
@@ -170,15 +177,18 @@
         <li>Capture 30 or more samples per fastener, turning it so the head, side and end are all seen.</li>
         <li>Types that look alike (a screw and a bolt of the same thread) need more samples. Sizes that differ only by length are hard to tell by camera. Use the scale weight for that.</li>
         <li>If it gets one wrong, capture a few more of that part and of the part it was confused with.</li></ul></details>`;
-    $("#tCls").value = V.cls; $("#tCls").onchange = e => { V.cls = e.target.value; };
-    const st = $("#vStatus"); if (!(await setupCamera(st))) return;
-    try { st.textContent = "Loading the recogniser..."; await Promise.all([ensureModel(), loadSamples(true)]); st.textContent = ""; } catch (e) { st.className = "status-line err"; st.textContent = "Could not load the recogniser: " + (e.message || e); return; }
+    $("#tCls").onchange = e => { V.cls = e.target.value; };
+    const st = $("#vStatus"); if (!(await setupCamera(st))) return; if (V.view !== me) { if (!V.view) stopCamera(); return; }
+    try { st.textContent = "Loading the recogniser..."; await Promise.all([ensureModel(), loadSamples(true)]); if (V.view !== me) { stopCamera(); return; } st.textContent = ""; } catch (e) { if (V.view === me) { st.className = "status-line err"; st.textContent = "Could not load the recogniser: " + (e.message || e); } return; }
+    const c0 = counts(); V.cls = (c0.empty || 0) < 20 ? "empty" : (items.find(i => (c0[i.id] || 0) < 30)?.id || V.cls); $("#tCls").value = V.cls;
     paintCounts();
     $("#tCap").onclick = () => requireAuth(capture);
   }
   function paintCounts() {
     const t = $("#tCounts"); if (!t) return; const c = counts(), keys = ["empty", ...state.citems.map(i => i.id)];
-    t.innerHTML = `<ul class="log">${keys.map(k => `<li><div class="t num">${c[k] || 0}</div><div><div class="what">${esc(itemName(k))}</div><div class="note">${(c[k] || 0) >= 30 ? "Good" : (c[k] || 0) ? "Add more (30+ is best)" : "Not trained"}</div>
+    const fast = keys.filter(k => k !== "empty" && c[k]).length, need = [];
+    if ((c.empty || 0) < 20) need.push("<strong>Empty</strong> needs 20 samples (nothing in the square)"); if (!fast) need.push("train at least one fastener");
+    t.innerHTML = (need.length ? `<div class="banner info"><span><strong>To finish:</strong> ${need.join("; ")}. Then open the Identify tab.</span></div>` : `<div class="banner info" style="border-color:var(--ok)"><span><strong>Ready.</strong> Open the Identify tab to try it.</span></div>`) + `<ul class="log">${keys.map(k => `<li><div class="t num">${c[k] || 0}</div><div><div class="what">${esc(itemName(k))}</div><div class="note">${(c[k] || 0) >= 30 ? "Good" : (c[k] || 0) ? "Add more (30+ is best)" : "Not trained"}</div>
       ${c[k] ? `<button class="btn sec" style="margin-top:6px" data-vclear="${k}">Clear</button>` : ""}</div></li>`).join("")}</ul>`;
     t.querySelectorAll("[data-vclear]").forEach(b => b.onclick = () => requireAuth(async () => {
       if (!confirm("Clear everything it learned about " + itemName(b.dataset.vclear) + "?")) return;

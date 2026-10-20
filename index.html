@@ -39,6 +39,10 @@ h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.05;margin:0;le
 .modesw{display:flex;border:2px solid #5C7380}
 .modesw button{background:none;border:0;color:#C7D3D8;padding:var(--s1) var(--s3);cursor:pointer;font:600 16px var(--display)}
 .modesw button[aria-pressed=true]{background:var(--hivis);color:var(--ink)}
+.sel{width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff}
+.vcam{position:relative;background:#000;width:100%;max-width:640px;aspect-ratio:16/9;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.vcam video{width:100%;height:100%;object-fit:contain}
+.vroi{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:3px dashed var(--hivis);box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
 .bigcount{font:700 96px/1 var(--display)}
 .chip.low{border-color:var(--alert);color:var(--alert)}
 .tabs{max-width:1100px;margin:0 auto;padding:0 var(--s4);display:flex;gap:var(--s5);overflow-x:auto}
@@ -193,7 +197,8 @@ const state = {
 try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; state.tab = "stock"; } } catch (e) {}
 const devId = () => SCALES[state.mode] || DEVICE_ID;
 const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
-               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]] };
+               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]],
+               vision: [["identify", "Identify"], ["train", "Train"], ["vlog", "Log"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -315,7 +320,7 @@ function startApp() {
   $("#app").innerHTML = `
   <header class="hdr"><div class="hdr-in">
     <div class="brand">Tool Scale</div>
-    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button></div>
+    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button><button data-mode="vision" aria-pressed="${state.mode === "vision"}">Vision</button></div>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
@@ -341,10 +346,10 @@ function startApp() {
 function setMode(m) {
   if (m === state.mode) return;
   state.mode = m; state.tab = TABS[m][0][0]; state.device = null; state.countItem = null;
-  try { localStorage.setItem("ts_mode", m); } catch (e) {}
+  try { localStorage.setItem("ts_mode", m === "vision" ? "tools" : m); } catch (e) {}
   route();
   /* the physical scale pauses tool matching while it is counting; only a signed-in user can change that */
-  if (state.token) rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
+  if (state.token && m !== "vision") rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
 }
 function setTab(t) {
   state.tab = t;
@@ -358,8 +363,9 @@ function labelTables() {
   });
 }
 function renderTab() {
+  if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
-  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder })[state.tab](); renderBanner(); renderAlert(); labelTables();
+  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog })[state.tab](); renderBanner(); renderAlert(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -395,7 +401,7 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale" && !(state.tab === "count" && $("#cntSel"))) renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
   } catch (e) { /* banner already shown */ }
 }
@@ -786,6 +792,20 @@ function reportDialog(kind, item) {
       await refreshAll(); d.close(); renderTab(); toast("Added to the reorder list"); } catch (err) {}
   };
 }
+
+/* ---------- vision (webcam) ---------- */
+function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
+async function ensureVision() {
+  if (window.VisionUI) return;
+  if (!window.tf) { try { await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } catch (e) { await loadScript("https://unpkg.com/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } }
+  await loadScript("vision.js");
+}
+async function visionPage(fn) {
+  $("#main").innerHTML = `<div class="empty"><p>Loading camera tools...</p></div>`;
+  try { await ensureVision(); window.VisionUI[fn](); }
+  catch (e) { $("#main").innerHTML = `<div class="banner"><span>Could not load the camera tools: ${esc(e.message || e)}</span></div>`; }
+}
+const renderIdentify = () => visionPage("identify"), renderTrain = () => visionPage("train"), renderVlog = () => visionPage("vlog");
 
 /* ---------- clicks ---------- */
 async function onMainClick(ev) {

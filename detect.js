@@ -10,7 +10,7 @@
   const MODEL = "models/fasteners.onnx", CLASSES = "models/classes.json";
   const COLORS = ["#F2C200", "#2FB36D", "#E5795F", "#4FA3E0", "#B07CE8", "#E88FB4", "#7FD3C7", "#C9A66B"];
   const D = { view: null, stream: null, running: false, timer: null, session: null, meta: null, conf: 0.35, iou: 0.5, hist: [], counts: {}, fps: 0, frames: 0, t0: 0,
-    frozen: null, boxes: [], cls: null, drag: null, mode: "log", busy: false };
+    frozen: null, boxes: [], cls: null, drag: null, mode: "log", busy: false, bg: null, bw: 0, bh: 0 };
   try { const c = Number(localStorage.getItem("d_conf")); if (c >= 0.05 && c <= 0.95) D.conf = c; } catch (e) {}
 
   const loadScript = src => new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); });
@@ -29,6 +29,33 @@
   function stopCamera() { if (D.stream) { D.stream.getTracks().forEach(t => t.stop()); D.stream = null; } }
   function stop() { D.view = null; D.running = false; clearTimeout(D.timer); stopCamera(); }
   const camErr = (e) => e.name === "NotAllowedError" ? "Camera permission was blocked. Allow the camera for this site, then reload." : (e.message || String(e));
+
+  /* ---------- the empty background (so boxes on an unchanged scene are ignored) ---------- */
+  const sc = document.createElement("canvas"), FG_THR = 28, FG_MIN = 0.15, MAX_FRAC = 0.35;
+  function grabSmall(v) { const w = 320, h = Math.round(320 * v.videoHeight / v.videoWidth); if (sc.width !== w || sc.height !== h) { sc.width = w; sc.height = h; } const g = sc.getContext("2d", { willReadFrequently: true }); g.drawImage(v, 0, 0, w, h); return g.getImageData(0, 0, w, h); }
+  async function learnBg(v) {
+    let acc = null; for (let i = 0; i < 8; i++) { const im = grabSmall(v); if (!acc) acc = new Float32Array(im.data.length); for (let j = 0; j < im.data.length; j++) acc[j] += im.data[j]; await new Promise(r => setTimeout(r, 90)); }
+    for (let j = 0; j < acc.length; j++) acc[j] /= 8; D.bg = acc; D.bw = sc.width; D.bh = sc.height;
+  }
+  /* integral image of "this pixel differs from the learned empty background", so any box can be checked in one lookup */
+  function fgIntegral(im) {
+    const w = D.bw, h = D.bh, d = im.data, bg = D.bg; let ox = 0, oy = 0, oz = 0, on = 0;
+    for (let y = 0; y < h; y += 3) for (let x = 0; x < w; x += 3) { if (x < w * 0.08 || x > w * 0.92 || y < h * 0.08 || y > h * 0.92) { const i = (y * w + x) * 4; ox += d[i] - bg[i]; oy += d[i + 1] - bg[i + 1]; oz += d[i + 2] - bg[i + 2]; on++; } }
+    ox /= on || 1; oy /= on || 1; oz /= on || 1;
+    const I = new Int32Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { const i = (y * w + x) * 4, e = (Math.abs(d[i] - bg[i] - ox) + Math.abs(d[i + 1] - bg[i + 1] - oy) + Math.abs(d[i + 2] - bg[i + 2] - oz)) / 3; row += e > FG_THR ? 1 : 0; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; } }
+    return I;
+  }
+  function fgFrac(I, b, vw, vh) {
+    const w = D.bw, h = D.bh, sx = w / vw, sy = h / vh, x0 = Math.max(0, Math.floor(b.x0 * sx)), y0 = Math.max(0, Math.floor(b.y0 * sy)), x1 = Math.min(w, Math.ceil(b.x1 * sx)), y1 = Math.min(h, Math.ceil(b.y1 * sy));
+    const area = (x1 - x0) * (y1 - y0); if (area <= 0) return 0; const W = w + 1;
+    return (I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]) / area;
+  }
+  function tidy(boxes, vw, vh) {   // drop whole-picture boxes, and let one fastener have only one box whatever its class
+    const small = boxes.filter(b => (b.x1 - b.x0) * (b.y1 - b.y0) < MAX_FRAC * vw * vh); small.sort((a, b) => b.s - a.s); const keep = [];
+    for (const b of small) { if (keep.every(k => iouOf(k, b) < 0.6)) keep.push(b); if (keep.length >= 150) break; }
+    return keep;
+  }
 
   /* ---------- Detect ---------- */
   async function ensureOrt() { if (!window.ort) await loadScript(ORT_URL); ort.env.wasm.wasmPaths = ORT_BASE; ort.env.wasm.numThreads = 1; }
@@ -74,6 +101,7 @@
     $("#main").innerHTML = `<div class="summary"><div><h1>Detect</h1><p>Spread the fasteners out so they do not touch. It finds and counts every one in the picture.</p></div></div>
       <div class="grid2"><div class="panel"><div class="vcam" id="dBox"><video id="dVid" playsinline muted autoplay></video><canvas id="dOv" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas></div>
         <div class="field" style="margin-top:12px"><label for="dConf">Confidence needed (higher is stricter): <span id="dConfV">${Math.round(D.conf * 100)}%</span></label><input id="dConf" type="range" min="10" max="90" step="5" value="${Math.round(D.conf * 100)}"></div>
+        <div class="row" style="margin-top:12px"><button class="btn sec" id="dBg">Learn the empty background</button><span class="hint" id="dBgSt" style="margin:0">Take everything out of view, then press. Anything that has not changed from the empty scene is then ignored.</span></div>
         <p class="status-line" id="dStatus">Loading the detector...</p></div>
       <div class="panel"><h2>In view now</h2><div id="dCounts"><p class="hint">Nothing yet.</p></div>
         <div class="row" style="margin-top:12px"><div class="field"><label for="dMode">Record the count as</label><select id="dMode" class="sel"><option value="log">Just log it</option><option value="set">The stock on hand</option><option value="add">Add to stock</option><option value="take">Take from stock</option></select></div></div>
@@ -81,6 +109,7 @@
     $("#dMode").value = D.mode; $("#dMode").onchange = e => { D.mode = e.target.value; };
     $("#dConf").oninput = e => { D.conf = Number(e.target.value) / 100; $("#dConfV").textContent = e.target.value + "%"; try { localStorage.setItem("d_conf", D.conf); } catch (x) {} };
     $("#dRec").onclick = () => requireAuth(record);
+    $("#dBg").onclick = async () => { const v = $("#dVid"), b = $("#dBg"); if (!v || !v.videoWidth) return; b.disabled = true; await learnBg(v); b.disabled = false; const t = $("#dBgSt"); if (t) { t.className = "status-line ok"; t.style.margin = "0"; t.textContent = "Background learned. Boxes on an unchanged scene are ignored."; } };
     $("#dNote").textContent = state.user ? "" : "Sign in (top right) to record counts.";
     const st = $("#dStatus");
     try { await startCamera($("#dVid")); } catch (e) { st.className = "status-line err"; st.textContent = camErr(e); return; }
@@ -98,7 +127,8 @@
       if (v && v.readyState >= 2 && v.videoWidth && D.session) {
         const sz = D.meta.imgsz || 640, nc = D.meta.names.length, p = prep(v, sz), feeds = {}; feeds[D.session.inputNames[0]] = p.tensor;
         const res = await D.session.run(feeds), out = res[D.session.outputNames[0]];
-        const boxes = decode(out, nc, D.conf, D.iou, p.sc, p.px, p.py, v.videoWidth, v.videoHeight);
+        let boxes = tidy(decode(out, nc, D.conf, D.iou, p.sc, p.px, p.py, v.videoWidth, v.videoHeight), v.videoWidth, v.videoHeight);
+        if (D.bg) { const im = grabSmall(v); if (im.width === D.bw && im.height === D.bh) { const I = fgIntegral(im); boxes = boxes.filter(b => fgFrac(I, b, v.videoWidth, v.videoHeight) >= FG_MIN); } }
         if (D.view === me) { draw(boxes, v); tally(boxes); }
         D.frames++; const now = Date.now(); if (!D.t0 || now - D.t0 > 2000) { D.fps = D.t0 ? Math.round(D.frames / ((now - D.t0) / 1000) * 10) / 10 : 0; D.t0 = now; D.frames = 0; const st = $("#dStatus"); if (st && !st.classList.contains("err")) st.textContent = "Running (" + D.ep + ", " + D.fps + " frames/s)."; }
       }
@@ -174,12 +204,12 @@
     c.addEventListener("touchstart", down, { passive: false }); c.addEventListener("touchmove", move, { passive: false }); c.addEventListener("touchend", up);
   }
   function paintBoxes() {
-    const el = $("#dBoxes"); if (!el) return; if (D.showBoxes && D.frozen) D.showBoxes();
-    el.innerHTML = D.frozen ? (D.boxes.length ? `<ul class="log">${D.boxes.map((b, i) => `<li><div class="t">${i + 1}</div><div class="what">${esc(nameOf(b.c))}</div><div><button class="btn sec" data-rm="${i}">Remove</button></div></li>`).join("")}</ul>` : `<p class="hint">Drag on the picture to draw a box around each fastener.</p>`) : `<p class="hint">Capture a picture, then drag on it to draw a box around each fastener.</p>`;
+    const el = $("#dBoxes"); if (!el) return; if (D.showBoxes && D.frozen) D.showBoxes(); const sv = $("#dSave"); if (sv) sv.textContent = D.boxes.length ? "Save picture" : "Save as empty picture";
+    el.innerHTML = D.frozen ? (D.boxes.length ? `<ul class="log">${D.boxes.map((b, i) => `<li><div class="t">${i + 1}</div><div class="what">${esc(nameOf(b.c))}</div><div><button class="btn sec" data-rm="${i}">Remove</button></div></li>`).join("")}</ul>` : `<p class="hint">Drag on the picture to draw a box around each fastener. If there are no fasteners in the picture, save it with no boxes: it teaches the detector what "nothing here" looks like.</p>`) : `<p class="hint">Capture a picture, then drag on it to draw a box around each fastener.</p>`;
     el.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { D.boxes.splice(Number(b.dataset.rm), 1); paintBoxes(); });
   }
   async function saveImage() {
-    const st = $("#dStatus"), c = snapCanvas; if (!D.frozen) return; if (!D.boxes.length) { st.className = "status-line err"; st.textContent = "Draw at least one box first."; return; }
+    const st = $("#dStatus"), c = snapCanvas; if (!D.frozen) return;
     const jpeg = c.toDataURL("image/jpeg", 0.85).split(",")[1], boxes = D.boxes.map(b => ({ c: b.c, x: round((b.x0 + b.x1) / 2), y: round((b.y0 + b.y1) / 2), w: round(b.x1 - b.x0), h: round(b.y1 - b.y0) }));
     $("#dSave").disabled = true;
     try { await guard(rpcAuth("toolscale_detect_save", { p_w: c.width, p_h: c.height, p_jpeg: jpeg, p_boxes: boxes })); st.className = "status-line ok"; st.textContent = "Saved with " + boxes.length + " box" + (boxes.length > 1 ? "es" : "") + "."; discard(); await paintSet(); }
@@ -194,7 +224,8 @@
       const rows = await guard(sb.from("detect_images").select("id,boxes,created_at,created_by").eq("active", true).order("created_at", { ascending: false }).limit(1000));
       const per = {}; let nb = 0; rows.forEach(r => (r.boxes || []).forEach(b => { per[b.c] = (per[b.c] || 0) + 1; nb++; }));
       const L = items();
-      el.innerHTML = `<p>${rows.length} picture${rows.length === 1 ? "" : "s"}, ${nb} box${nb === 1 ? "" : "es"}.</p>
+      el.innerHTML = `<p>${rows.length} picture${rows.length === 1 ? "" : "s"}, ${nb} box${nb === 1 ? "" : "es"}, ${rows.filter(r => !(r.boxes || []).length).length} empty (no fasteners).</p>
+        ${rows.filter(r => !(r.boxes || []).length).length < Math.max(3, Math.round(rows.length * 0.1)) ? `<p class="status-line err">Add some empty pictures (about 1 in 10): the plain background, a shadow, your hand, other objects, with no boxes. Without them the detector sees fasteners everywhere.</p>` : ""}
         ${rows.length < 40 ? `<p class="status-line err">Only ${rows.length} picture${rows.length === 1 ? "" : "s"}. Aim for 40 or more, with different screws and a new arrangement each time. Many different pictures teach more than a few pictures with many boxes, and the test score needs spare pictures to be meaningful.</p>` : ""}
         <ul class="log">${L.map(i => `<li><div class="t num">${per[i.id] || 0}</div><div><div class="what">${esc(nameOf(i.id))}</div><div class="note">${(per[i.id] || 0) >= 100 ? "Good" : (per[i.id] || 0) >= 30 ? "OK (100 is better)" : "Needs more (30 or more)"}</div></div></li>`).join("")}</ul>
         <div class="row" style="margin-top:12px"><button class="btn" id="dExport" ${rows.length ? "" : "disabled"}>Export for training (.zip)</button></div><p class="status-line" id="dExSt"></p>
@@ -228,5 +259,5 @@
     btn.disabled = false;
   }
 
-  window.DetectUI = { detect, label, stop, _t: { D, decode, nms, iouOf } };   // _t is for tests
+  window.DetectUI = { detect, label, stop, _t: { D, decode, nms, iouOf, fgIntegral, fgFrac, tidy } };   // _t is for tests
 })();

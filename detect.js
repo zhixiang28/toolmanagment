@@ -195,6 +195,7 @@
       const per = {}; let nb = 0; rows.forEach(r => (r.boxes || []).forEach(b => { per[b.c] = (per[b.c] || 0) + 1; nb++; }));
       const L = items();
       el.innerHTML = `<p>${rows.length} picture${rows.length === 1 ? "" : "s"}, ${nb} box${nb === 1 ? "" : "es"}.</p>
+        ${rows.length < 40 ? `<p class="status-line err">Only ${rows.length} picture${rows.length === 1 ? "" : "s"}. Aim for 40 or more, with different screws and a new arrangement each time. Many different pictures teach more than a few pictures with many boxes, and the test score needs spare pictures to be meaningful.</p>` : ""}
         <ul class="log">${L.map(i => `<li><div class="t num">${per[i.id] || 0}</div><div><div class="what">${esc(nameOf(i.id))}</div><div class="note">${(per[i.id] || 0) >= 100 ? "Good" : (per[i.id] || 0) >= 30 ? "OK (100 is better)" : "Needs more (30 or more)"}</div></div></li>`).join("")}</ul>
         <div class="row" style="margin-top:12px"><button class="btn" id="dExport" ${rows.length ? "" : "disabled"}>Export for training (.zip)</button></div><p class="status-line" id="dExSt"></p>
         ${rows.length ? `<details style="margin-top:12px"><summary style="cursor:pointer">Recent pictures</summary><ul class="log">${rows.slice(0, 20).map(r => `<li><div class="t">${esc(when(r.created_at))}</div><div>${(r.boxes || []).length} boxes${r.created_by ? " &middot; " + esc(r.created_by) : ""} <button class="btn sec" style="margin-left:8px" data-rmimg="${r.id}">Remove</button></div></li>`).join("")}</ul></details>` : ""}`;

@@ -1,0 +1,14 @@
+{
+ "version": 1792559200866,
+ "imgsz": 640,
+ "names": [
+  {
+   "id": "212c9628-fcaa-4227-a192-0786572c3e95",
+   "name": "Socket Head Cap Screw M6 x 16"
+  },
+  {
+   "id": "b258ee61-3e2b-44a9-9294-c8c54a46c1ef",
+   "name": "Hex Screw M6 x 16"
+  }
+ ]
+}

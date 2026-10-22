@@ -168,7 +168,7 @@
       <div class="row"><div class="field"><label for="uW">Width (m)</label><input id="uW" type="number" step="0.05" min="0.1" value="${u.w}"></div><div class="field"><label for="uD">Depth (m)</label><input id="uD" type="number" step="0.05" min="0.1" value="${u.d}"></div></div>
       <div class="row"><div class="field"><label for="uH">Height (m)</label><input id="uH" type="number" step="0.05" min="0.1" value="${u.h}"></div><div class="field"><label for="uL">${u.kind === "drawers" ? "Drawers" : u.kind === "bench" ? "Levels" : "Shelves / levels"}</label><input id="uL" type="number" step="1" min="1" max="20" value="${u.levels}"></div></div>
       <div class="row"><button class="btn sec" id="uRot">Turn 90°</button><button class="btn sec" id="uDup">Copy</button><button class="btn danger" id="uDel">Remove</button></div>
-      <p class="hint">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " stored here: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing stored here yet. Place items on the Items tab."}</p></div>`;
+      <p class="hint">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " stored here: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing stored here yet. Place items under Setup, Place items."}</p></div>`;
     let tm = null; const apply = () => requireAuth(async () => {
       Object.assign(u, { name: $("#uName").value.trim() || u.name, kind: $("#uKind").value, w: Math.max(0.1, Number($("#uW").value) || u.w), d: Math.max(0.1, Number($("#uD").value) || u.d), h: Math.max(0.1, Number($("#uH").value) || u.h), levels: clamp(Math.round(Number($("#uL").value) || u.levels), 1, 20) });
       try { await saveUnit(u); } catch (e) {} draw();
@@ -198,7 +198,7 @@
     try { await Promise.all([load(), window.THREE ? 0 : loadScript(THREE_URL)]); } catch (e) { const m = $("#s3Msg"); if (m) m.textContent = "Could not load 3D: " + (e.message || e); return; }
     if (S.view !== me) return; if (!window.WebGLRenderingContext) { $("#s3Msg").textContent = "This browser cannot show 3D."; return; }
     try { init3d(); } catch (e) { const m = $("#s3Msg"); if (m) m.textContent = "Could not start 3D: " + (e.message || e); return; }
-    $("#s3Msg").textContent = S.rooms.length || S.units.length ? "" : "Nothing drawn yet. Draw rooms and shelves on the Plan tab."; paintSide();
+    $("#s3Msg").textContent = S.rooms.length || S.units.length ? "" : "Nothing drawn yet. Draw rooms and shelves under Setup, Space plan."; paintSide();
     if (state.spaceFocus) { const f = state.spaceFocus; state.spaceFocus = null; S.find = ""; focusItem(f.kind, f.id); }
   }
   function init3d() {
@@ -265,7 +265,7 @@
   }
   function focusUnit(uid) { const k = S.t, u = unit(uid); if (!k || !u) return; const f = fp(u), C = k.C; C.tx = f.x + f.w / 2; C.tz = f.z + f.d / 2; C.ty = u.h / 2; C.dist = Math.max(3, Math.max(f.w, f.d, u.h) * 2.4); camUpdate(); }
   function focusItem(kind, id) {
-    const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one on the Items tab."); return; }
+    const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
     S.hl = x.it.unit_id; S.sel = { kind: "unit", id: S.hl }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();
   }
   function paintSide() {
@@ -289,14 +289,14 @@
   /* ====================================================== Items ====================================================== */
   async function items() {
     stop(); const me = S.view = {};
-    $("#main").innerHTML = `<div class="summary"><div><h1>Items</h1><p>Say where each tool and consumable lives: which shelf or cabinet, and which level (1 is the lowest). Then you can find it on the Find tab.</p></div></div>
+    $("#main").innerHTML = `<div class="summary"><div><h1>Place items</h1><p>Say where each tool and consumable lives: which shelf or cabinet, and which level (1 is the lowest). Then Find can show it in 3D.</p></div></div>
       <div class="row" style="margin-bottom:12px"><div class="field"><label for="iQ">Search</label><input id="iQ" type="text" placeholder="name or size"></div><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="iUn"> Not placed yet only</label></div><div id="iList"></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
     const paint = () => {
       const q = $("#iQ").value.trim().toLowerCase(), un = $("#iUn").checked, list = allItems().filter(x => (!q || itemName(x).toLowerCase().includes(q)) && (!un || !unit(x.it.unit_id)));
       const ops = uid => S.units.map(uu => { const rm = roomOf(uu); return `<option value="${uu.id}" ${uu.id === uid ? "selected" : ""}>${esc((rm ? rm.name + " · " : "") + uu.name)}</option>`; }).join("");
       $("#iList").innerHTML = S.units.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Now</th><th>Shelf or cabinet</th><th>Level</th><th></th></tr></thead><tbody>${list.map(x => `<tr data-k="${x.kind}" data-id="${x.it.id}"><td><strong>${esc(itemName(x))}</strong></td><td>${x.kind === "tool" ? "Tool" : "Consumable"}</td><td>${esc(whereOf(x.it) || "Not placed")}</td>
-        <td><select class="sel iU"><option value="">Not placed</option>${ops(x.it.unit_id)}</select></td><td><select class="sel iL" style="min-width:70px"></select></td><td><button class="btn sec iGo">Place</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Draw some shelves or cabinets on the Plan tab first.</p></div>`;
+        <td><select class="sel iU"><option value="">Not placed</option>${ops(x.it.unit_id)}</select></td><td><select class="sel iL" style="min-width:70px"></select></td><td><button class="btn sec iGo">Place</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Draw some shelves or cabinets under Setup, Space plan, first.</p></div>`;
       $("#iList").querySelectorAll("tbody tr").forEach(tr => {
         const x = allItems().find(a => a.kind === tr.dataset.k && String(a.it.id) === tr.dataset.id), us = tr.querySelector(".iU"), ls = tr.querySelector(".iL");
         const fill = () => { const uu = unit(us.value); ls.innerHTML = uu ? Array.from({ length: uu.levels }, (_, i) => `<option ${Number(x.it.level) === i + 1 && x.it.unit_id === uu.id ? "selected" : ""}>${i + 1}</option>`).join("") : `<option>-</option>`; ls.disabled = !uu; }; fill(); us.onchange = fill;

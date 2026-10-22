@@ -163,7 +163,7 @@
     if (V.view !== me) { stopCamera(); return; }
     const n = Object.keys(counts()).length;
     if (n < 2) {
-      st.className = "status-line err"; st.innerHTML = `<strong>It needs to learn at least two different fasteners</strong> so it can tell them apart. ${n} trained so far.${V.old ? ` (${V.old} older samples from the previous version are ignored. Retrain on the Train tab.)` : ""}<br><button class="btn" style="margin-top:8px" id="vGoTrain">Go to Train</button>`;
+      st.className = "status-line err"; st.innerHTML = `<strong>It needs to learn at least two different fasteners</strong> so it can tell them apart. ${n} trained so far.${V.old ? ` (${V.old} older samples from the previous version are ignored. Retrain under Setup, Camera training.)` : ""}<br><button class="btn" style="margin-top:8px" id="vGoTrain">Go to Camera training</button>`;
       const g = $("#vGoTrain"); if (g) g.onclick = () => setTab("train");
     } else { st.className = "status-line"; st.textContent = bgOk() ? "Ready." : "Press \"Learn the empty background\" first, with nothing in view."; }
     V.running = true; V.absent = 99; V.armed = true; V.lastKey = null; V.streak = 0; loop(me);
@@ -225,7 +225,7 @@
       <div class="grid2"><div class="panel">${camHtml()}</div>
       <div class="panel"><h2>1. Learn the background</h2><p>Take everything out of view and press <em>Learn the empty background</em>. Use a plain, matte background in steady light.</p>
         <h2 style="margin-top:16px">2. Pick what you are showing</h2><div class="field"><label for="tCls">Fastener</label><select id="tCls" class="sel">${items.map(i => `<option value="${i.id}">${esc(i.name)}${i.spec ? " (" + esc(i.spec) + ")" : ""}</option>`).join("")}</select></div>
-        ${items.length ? "" : `<p class="hint">No fasteners yet. Add them on the Consumables page (Items tab), then come back.</p>`}
+        ${items.length ? "" : `<p class="hint">No fasteners yet. Add them under Setup, Consumables, then come back.</p>`}
         <h2 style="margin-top:16px">3. Capture</h2><p>Put one part on the background, press the button, then slowly turn it and move it a little.</p>
         <button class="btn" id="tCap">Capture 10 pictures</button><p class="status-line" id="vStatus"></p></div></div>
       <section class="block"><h2>What it has learned</h2><div id="tCounts"></div></section>

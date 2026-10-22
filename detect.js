@@ -115,7 +115,7 @@
     try { await startCamera($("#dVid")); } catch (e) { st.className = "status-line err"; st.textContent = camErr(e); return; }
     if (D.view !== me) { if (!D.view) stopCamera(); return; }
     try {
-      if (!(await loadModel())) { st.className = "status-line err"; st.innerHTML = `<strong>There is no trained detector yet.</strong> Label pictures on the <em>Label</em> tab, export the dataset, train it with the Colab notebook, then upload <code>fasteners.onnx</code> and <code>classes.json</code> into the <code>models</code> folder of your repo.<br><button class="btn" style="margin-top:8px" id="dGo">Go to Label</button>`; const g = $("#dGo"); if (g) g.onclick = () => setTab("label"); return; }
+      if (!(await loadModel())) { st.className = "status-line err"; st.innerHTML = `<strong>There is no trained detector yet.</strong> Label pictures under <em>Setup, Camera pictures</em>, export the dataset, train it with the Colab notebook, then upload <code>fasteners.onnx</code> and <code>classes.json</code> into the <code>models</code> folder of your repo.<br><button class="btn" style="margin-top:8px" id="dGo">Go to Label</button>`; const g = $("#dGo"); if (g) g.onclick = () => setTab("label"); return; }
     } catch (e) { if (D.view === me) { st.className = "status-line err"; st.textContent = "Could not start the detector: " + (e.message || e); } return; }
     if (D.view !== me) { stopCamera(); return; }
     st.className = "status-line"; st.textContent = "Running (" + D.ep + ")."; D.running = true; D.hist = []; loop(me);
@@ -165,7 +165,7 @@
       <div class="grid2"><div class="panel"><div class="vcam" id="dBox"><video id="dVid" playsinline muted autoplay></video><canvas id="dFrozen" style="position:absolute;inset:0;width:100%;height:100%;display:none;touch-action:none;cursor:crosshair"></canvas></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="dSnap">Capture a picture</button><button class="btn sec" id="dSave" style="display:none">Save picture</button><button class="btn sec" id="dDiscard" style="display:none">Discard</button></div>
         <p class="status-line" id="dStatus"></p></div>
-      <div class="panel"><h2>Fastener type for the next box</h2>${list.length ? `<select id="dCls" class="sel">${list.map(i => `<option value="${i.id}">${esc(nameOf(i.id))}</option>`).join("")}</select>` : `<p class="hint">No fasteners yet. Add them on the Consumables page (Items tab), then come back.</p>`}
+      <div class="panel"><h2>Fastener type for the next box</h2>${list.length ? `<select id="dCls" class="sel">${list.map(i => `<option value="${i.id}">${esc(nameOf(i.id))}</option>`).join("")}</select>` : `<p class="hint">No fasteners yet. Add them under Setup, Consumables, then come back.</p>`}
         <h2 style="margin-top:16px">Boxes in this picture</h2><div id="dBoxes"><p class="hint">Capture a picture, then drag on it to draw a box around each fastener.</p></div></div></div>
       <section class="block"><h2>Training set</h2><div id="dSet"><p class="hint">Loading...</p></div></section>
       <details class="panel" style="margin-top:24px"><summary style="cursor:pointer;font-weight:600">How to train the detector</summary><ol>

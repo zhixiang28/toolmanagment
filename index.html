@@ -36,9 +36,46 @@ h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.05;margin:0;le
 .dot{width:10px;height:10px;border-radius:50%;background:#7C8A91;flex:none}
 .dot.settled{background:#5BD18B}.dot.moving{background:var(--hivis)}.dot.off{background:#E5795F}
 .linkbtn{background:none;border:0;color:#C7D3D8;text-decoration:underline;cursor:pointer;padding:var(--s2)}
-.modesw{display:flex;border:2px solid #5C7380}
-.modesw button{background:none;border:0;color:#C7D3D8;padding:var(--s1) var(--s3);cursor:pointer;font:600 16px var(--display)}
-.modesw button[aria-pressed=true]{background:var(--hivis);color:var(--ink)}
+button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-align:left}
+.tab{display:flex;align-items:center;gap:6px}
+.tab svg{width:20px;height:20px;flex:none}
+.tab .bd{font:700 13px/18px var(--body);background:var(--hivis);color:var(--ink);border-radius:9px;padding:0 6px;min-width:18px;text-align:center}
+.tab .bd:empty{display:none}
+.subtabs{max-width:1100px;margin:0 auto;padding:var(--s2) var(--s4) var(--s3);display:flex;gap:var(--s2);overflow-x:auto;scrollbar-width:none}
+.subtabs:empty{display:none}
+.subtabs button{background:none;border:1px solid #5C7380;color:#C7D3D8;padding:4px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;font-size:14px}
+.subtabs button[aria-current=page]{background:#fff;border-color:#fff;color:var(--ink);font-weight:600}
+.subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
+.linkname{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(127,127,127,.45);text-underline-offset:3px}
+.linkname:hover{text-decoration-color:currentColor}
+.srch{position:relative;margin-bottom:var(--s5)}
+.srch input[type=search]{font-size:18px;min-height:52px;padding-left:44px;border-color:var(--ink)}
+.srch svg{position:absolute;left:14px;top:15px;width:22px;height:22px;color:var(--ink-2)}
+.res{list-style:none;margin:var(--s2) 0 0;padding:0;border:1px solid var(--line);background:var(--panel)}
+.res li{display:flex;gap:var(--s3);align-items:center;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.res li:last-child{border-bottom:0}
+.res .nm{flex:1;min-width:180px}
+.res .sub{font-size:14px;color:var(--ink-2)}
+.cards4{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--s3)}
+.acard{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--steel);padding:var(--s3) var(--s4);display:flex;flex-direction:column;gap:var(--s2)}
+.acard.warn{border-left-color:var(--alert)}.acard.hi{border-left-color:var(--hivis)}.acard.ok{border-left-color:var(--ok)}
+.acard .n{font:700 40px/1 var(--display)}
+.acard p{margin:0;font-size:15px}
+.acard .btn{align-self:flex-start;margin-top:auto}
+.qa{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s2)}
+.qa button{background:#fff;border:2px solid var(--line);padding:var(--s3);text-align:left;cursor:pointer;font-weight:600;display:flex;gap:10px;align-items:center}
+.qa button:hover{border-color:var(--ink)}
+.qa svg{width:22px;height:22px;flex:none;color:var(--steel)}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.steps li{display:flex;gap:10px;align-items:center}
+.steps .t{flex:1}
+.steps .ck{width:22px;height:22px;border-radius:50%;border:2px solid #9EAAB0;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.steps li.done .ck{background:var(--ok);border-color:var(--ok);color:#fff}
+.steps li.done span.t{color:var(--ink-2);text-decoration:line-through}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--s3)}
+.facts>div{background:#fff;border:1px solid var(--line);padding:var(--s2) var(--s3)}
+.facts .k{font-size:13px;color:var(--ink-2)}
+.facts .v{font:600 22px/1.2 var(--display)}
 .sel{width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff}
 .vcam{position:relative;background:#000;width:100%;max-width:640px;aspect-ratio:16/9;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .vcam video{width:100%;height:100%;object-fit:contain}
@@ -83,7 +120,7 @@ section.block>h2{font-size:30px;margin-bottom:var(--s3)}
 .btn.danger{background:var(--alert);border-color:var(--alert)}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 label{display:block;font-size:14px;font-weight:600;margin-bottom:var(--s1)}
-input[type=text],input[type=number],input[type=email],input[type=password]{width:100%;padding:var(--s2) var(--s3);border:2px solid #9EAAB0;background:#fff;min-height:42px}
+input[type=text],input[type=search],input[type=number],input[type=email],input[type=password]{width:100%;padding:var(--s2) var(--s3);border:2px solid #9EAAB0;background:#fff;min-height:42px}
 .hint{font-size:14px;color:var(--ink-2);margin:var(--s1) 0 0}
 .row{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-end}
 .field{flex:1;min-width:140px}
@@ -153,12 +190,8 @@ code{background:#D9E0E3;padding:0 4px}
   .hdr-in{flex-wrap:wrap;gap:var(--s2) var(--s3)}
   .brand{order:1}
   #authbtn{order:2}
-  .modesw{order:3;width:100%}
-  .modesw button{flex:1;padding:8px var(--s2)}
   .state{order:4}
   .live{order:5;margin-left:auto}
-  .tabs{gap:14px;padding:0 var(--s3)}
-  .tab{font-size:17px}
   .log li{grid-template-columns:1fr;gap:var(--s1)}
   .live .v{font-size:28px}
   .hdr-in{gap:var(--s2) var(--s3)}
@@ -169,6 +202,19 @@ code{background:#D9E0E3;padding:0 4px}
   .tile{padding:var(--s3)}
   .tile .meta{flex-wrap:wrap}
   .big{font-size:44px}
+}
+@media (max-width:700px){
+  body{padding-bottom:64px}
+  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--ink);border-top:1px solid #33464F;max-width:none;padding:0 0 env(safe-area-inset-bottom);gap:0;justify-content:space-around;overflow:visible}
+  .tab{flex:1;flex-direction:column;gap:2px;font:600 12px var(--body);padding:8px 0 6px;border-bottom:0;border-top:3px solid transparent;position:relative}
+  .tab[aria-selected=true]{border-top-color:var(--hivis)}
+  .tab .bd{position:absolute;top:3px;left:calc(50% + 6px);font-size:11px;line-height:16px;min-width:16px;padding:0 4px}
+  .subtabs{padding:var(--s2) var(--s3) var(--s3)}
+  .toast{bottom:84px}
+  .acard{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 12px}
+  .acard .n{font-size:30px;min-width:28px}
+  .acard p{flex:1 1 calc(100% - 52px);min-width:0}
+  .acard .btn{margin-top:0;margin-left:40px}
 }
 @media (prefers-reduced-motion:no-preference){ .toast{animation:up .18s ease-out} @keyframes up{from{opacity:0;transform:translate(-50%,8px)}} }
 </style>
@@ -198,12 +244,30 @@ const state = {
   teach: null, editingId: null, err: null,
   mode: "tools", citems: [], cevents: [], countItem: null, cont: {}, reorder: [], draftMsg: null,
 };
-try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; state.tab = "stock"; } } catch (e) {}
-const devId = () => SCALES[state.mode] || DEVICE_ID;
-const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
-               count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]],
-               vision: [["identify", "Identify"], ["detect", "Detect"], ["label", "Label"], ["train", "Train"], ["vlog", "Log"]],
-               space: [["splan", "Plan"], ["s3d", "Find"], ["sitems", "Items"]] };
+/* Pages are grouped by the job you are doing, not by the hardware behind them */
+const SECTIONS = [
+  ["home", "Home", [["home", "Overview"]]],
+  ["find", "Find", [["s3d", "Find"]]],
+  ["tools", "Tools", [["board", "Board"], ["activity", "Activity"]]],
+  ["stock", "Stock", [["stock", "On hand"], ["count", "Count by weight"], ["detect", "Count by camera"], ["identify", "Identify one"], ["history", "History"]]],
+  ["orders", "Orders", [["reorder", "Order list"]]],
+  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"]]],
+];
+const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
+const ICON = {
+  home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  find: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  tools: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
+  stock: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+  orders: '<path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/>',
+  setup: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  count: '<path d="M4 20h16M6 20V10h12v10M9 10V6h6v4"/>', camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', cube: '<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
+};
+const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
+state.tab = "home"; state.lastTab = {};
+try { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } catch (e) {}
+const devId = () => state.tab === "count" ? SCALES.count : SCALES.tools;
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -220,7 +284,9 @@ function when(ts) {
 }
 function online() { return state.device?.last_seen && (Date.now() - new Date(state.device.last_seen)) < 30000; }   // the scale reports every 5 s
 function paused() { return state.device?.learn_until && new Date(state.device.learn_until) > new Date(); }
-const needsLook = e => (e.action === "unknown" || e.confidence === "low") && e.id > state.dismissedUpTo && (Date.now() - new Date(e.ts)) < 12 * 3600e3;
+state.resolved = new Set(JSON.parse((() => { try { return localStorage.getItem("ts_resolved") || "[]"; } catch (e) { return "[]"; } })()));
+function resolveEvent(id) { state.resolved.add(Number(id)); try { localStorage.setItem("ts_resolved", JSON.stringify([...state.resolved].slice(-200))); } catch (e) {} }
+const needsLook = e => (e.action === "unknown" || e.confidence === "low") && !state.resolved.has(Number(e.id)) && e.id > state.dismissedUpTo && (Date.now() - new Date(e.ts)) < 12 * 3600e3;
 function sortedTools() { return [...state.tools].sort((a, b) => (a.slot || "~").localeCompare(b.slot || "~") || a.name.localeCompare(b.name)); }
 function closeTo(tool) {
   return state.tools.filter(o => o.id !== tool.id && Math.abs(Number(o.weight_g) - Number(tool.weight_g)) <= Number(o.tol_g) + Number(tool.tol_g));
@@ -324,42 +390,56 @@ function keepWatching() {
 function startApp() {
   $("#app").innerHTML = `
   <header class="hdr"><div class="hdr-in">
-    <div class="brand">Tool Scale</div>
-    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button><button data-mode="vision" aria-pressed="${state.mode === "vision"}">Vision</button><button data-mode="space" aria-pressed="${state.mode === "space"}">Space</button></div>
+    <button class="brand" id="brand" title="Home">Tool Scale</button>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
-  <nav class="tabs" role="tablist">
-    ${TABS[state.mode].map(([k, l]) =>
-      `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}
-  </nav></header>
+  <nav class="tabs" aria-label="Sections">${SECTIONS.map(([k, l]) => `<button class="tab" data-sec="${k}">${icon(k)}<span>${l}</span><span class="bd"></span></button>`).join("")}</nav>
+  <nav class="subtabs" id="subnav" aria-label="Pages"></nav></header>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
-  document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
-  document.querySelectorAll(".modesw button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec); setTab(state.lastTab[s[0]] || s[2][0][0]); });
+  $("#brand").onclick = () => setTab("home");
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
-  updateAuthBtn();
+  updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
+  $("#dlg").addEventListener("click", onMainClick);
   $("#main").addEventListener("change", ev => { const q = ev.target.dataset?.qty; if (q) requireAuth(async () => { try { await guard(rpcAuth("toolscale_reorder_update", { p_id: q, p_qty: Number(ev.target.value || 1), p_dismiss: false })); await refreshAll(); } catch (e) {} }); });
+  document.addEventListener("keydown", e => { if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "") && !$("#dlg").open) { e.preventDefault(); if (state.tab !== "home") setTab("home"); setTimeout(() => $("#q")?.focus(), 0); } });
   refreshAll().then(() => { renderTab(); });
   pollFast = setInterval(() => { if (!document.hidden) refreshDevice(); }, 1500);
   keepWatching(); pollWatch = setInterval(keepWatching, 10000);
   pollSlow = setInterval(() => { if (!document.hidden) refreshAll(); }, 4000);
-  pollTick = setInterval(() => { if (!state.teach && ["board", "tools", "stock", "items"].includes(state.tab)) renderTab(); }, 30000);
+  pollTick = setInterval(() => { if (!state.teach && !$("#dlg").open && ["home", "board", "stock", "tools", "items"].includes(state.tab) && document.activeElement?.id !== "q") renderTab(); }, 30000);
 }
-function setMode(m) {
-  if (m === state.mode) return;
-  state.mode = m; state.tab = TABS[m][0][0]; state.device = null; state.countItem = null;
-  try { localStorage.setItem("ts_mode", m === "count" ? "count" : "tools"); } catch (e) {}
-  route();
-  /* the physical scale pauses tool matching while it is counting; only a signed-in user can change that */
-  if (state.token && (m === "tools" || m === "count")) rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
+function paintNav() {
+  const sec = sectionOf(state.tab);
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.sec === sec[0]));
+  const sub = $("#subnav"); if (!sub) return;
+  const tabs = sec[2]; let h = "";
+  if (tabs.length > 1) tabs.forEach(([k, l]) => {
+    if (sec[0] === "setup" && k === "tools") h += `<span class="grp">Catalogue</span>`;
+    if (sec[0] === "setup" && k === "splan") h += `<span class="grp">Where things live</span>`;
+    if (sec[0] === "setup" && k === "scale") h += `<span class="grp">Devices</span>`;
+    h += `<button data-tab="${k}" ${k === state.tab ? 'aria-current="page"' : ""}>${l}</button>`;
+  });
+  sub.innerHTML = h; sub.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  sub.querySelector("[aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  updateBadge();
 }
+/* The one load cell either tracks tools or counts parts. Opening Count switches it to counting, leaving Count switches it back. */
+function syncScaleMode(prev) {
+  if (!state.token) return;
+  const want = state.tab === "count" ? "count" : prev === "count" ? "tools" : null;
+  if (want) setScaleMode(want);
+}
+function setScaleMode(m) { return rpcAuth("toolscale_set_device_mode", { p_device: SCALES[m] || DEVICE_ID, p_mode: m }).then(() => refreshDevice()).then(() => { if (["count", "board"].includes(state.tab) && !$("#dlg").open) renderTab(); }, () => {}); }
 function setTab(t) {
-  state.tab = t;
-  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  renderTab();
+  const prev = state.tab; state.tab = t; state.lastTab[sectionOf(t)[0]] = t;
+  try { localStorage.setItem("ts_tab", t); } catch (e) {}
+  if (prev !== t) state.draftMsg = state.tab === "reorder" ? state.draftMsg : null;
+  paintNav(); syncScaleMode(prev); renderTab(); if (prev !== t) window.scrollTo(0, 0);
 }
 function labelTables() {
   document.querySelectorAll("table.cards").forEach(t => {
@@ -371,8 +451,7 @@ function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
-  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems })[state.tab](); renderBanner(); renderAlert(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -410,7 +489,8 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel")) && !$("#dlg").open && !/^(q|stQ)$/.test(document.activeElement?.id || "")) renderTab();
+    else if (changed && $("#sheetForm")) paintSheet();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
   } catch (e) { /* banner already shown */ }
 }
@@ -435,6 +515,128 @@ function updateLive() {
   const tl = $("#teachLive"); if (tl) tl.textContent = on && d.live_g != null ? fmtG(d.live_g) + " g  (" + txt.toLowerCase() + ")" : "scale offline";
 }
 
+/* ---------- home: what needs doing, search everything, quick actions ---------- */
+const kindName = k => k === "tool" ? "Tool" : "Consumable";
+const allEntries = () => [...state.tools.map(it => ({ kind: "tool", it })), ...state.citems.map(it => ({ kind: "consumable", it }))];
+const fullName = it => it.name + (it.spec ? " " + it.spec : "");
+const whereText = it => locText(it) || it.slot || it.location || "";
+const onOrder = (kind, id) => state.reorder.find(r => r.kind === kind && r.item_id === id);
+function statusText(kind, it) {
+  if (kind === "tool") return it.status === "out" ? `<span class="chip out">Out ${esc(ago(it.taken_at))}</span>` : `<span class="chip in">In</span>`;
+  return `<span class="chip ${lowItem(it) ? "low" : ""}">${it.count_on_hand} on hand${lowItem(it) ? " · low" : ""}</span>`;
+}
+function searchItems(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
+  return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.category, it.slot, it.location, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
+    .sort((a, b) => (a.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) - (b.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) || a.it.name.localeCompare(b.it.name));
+}
+function resultRows(list) {
+  if (!list.length) return `<p class="hint">Nothing matches. Try part of the name, a size like M6, or a shelf name.</p>`;
+  return `<ul class="res">${list.slice(0, 12).map(({ kind, it }) => `<li><div class="nm"><button class="linkname" data-act="sheet" data-kind="${kind}" data-id="${it.id}"><strong>${esc(fullName(it))}</strong></button>
+    <div class="sub">${kindName(kind)} · ${esc(whereText(it) || "no place set")}</div></div>${statusText(kind, it)}
+    ${it.unit_id ? `<button class="btn sec" data-act="locate" data-kind="${kind}" data-id="${it.id}">Show</button>` : ""}</li>`).join("")}</ul>${list.length > 12 ? `<p class="hint">${list.length - 12} more. Type more of the name to narrow it down.</p>` : ""}`;
+}
+function attention() {
+  const c = [], look = state.events.filter(needsLook), out = state.tools.filter(t => t.status === "out"), late = out.filter(t => t.taken_at && Date.now() - new Date(t.taken_at) > 24 * 3600e3);
+  const low = state.citems.filter(lowItem), sug = suggestions(), open = openReorder(), d = state.device;
+  const unplaced = allEntries().filter(x => !x.it.unit_id).length, hasSpace = (state.spaceUnits || []).length > 0;
+  if (look.length) c.push(["warn", look.length, `scale event${look.length > 1 ? "s" : ""} to check. The scale could not tell which tool moved.`, "Check now", "goto-check"]);
+  if (d && !online()) c.push(["warn", "!", "The scale is offline" + (d.last_seen ? " since " + ago(d.last_seen) + " ago" : "") + ". Check its power and WiFi.", "Scale page", "go:scale"]);
+  else if (d && d.cal_factor == null) c.push(["warn", "!", "The scale is not calibrated, so weights are wrong.", "Calibrate", "go:scale"]);
+  if (late.length) c.push(["warn", late.length, `tool${late.length > 1 ? "s" : ""} out for more than a day: ${late.map(t => esc(t.name)).join(", ")}.`, "See board", "go:board"]);
+  else if (out.length) c.push(["hi", out.length, `tool${out.length > 1 ? "s" : ""} out now: ${out.map(t => esc(t.name)).join(", ")}.`, "See board", "go:board"]);
+  if (sug.length) c.push(["warn", sug.length, `consumable${sug.length > 1 ? "s" : ""} at or below minimum and not on the order list yet.`, "Add to order", "go:reorder"]);
+  else if (low.length) c.push(["hi", low.length, `consumable${low.length > 1 ? "s" : ""} low on stock, already on the order list.`, "See stock", "go:stock"]);
+  if (open.length) c.push(["", open.length, `item${open.length > 1 ? "s" : ""} on this month's order list.`, "Open list", "go:reorder"]);
+  if (hasSpace && unplaced) c.push(["", unplaced, `item${unplaced > 1 ? "s have" : " has"} no place on a shelf yet, so Find cannot show ${unplaced > 1 ? "them" : "it"}.`, "Place items", "go:sitems"]);
+  const stale = state.citems.filter(i => !i.counted_at || Date.now() - new Date(i.counted_at) > 30 * 86400e3);
+  if (stale.length) c.push(["", stale.length, `consumable${stale.length > 1 ? "s" : ""} not counted in the last 30 days.`, "Count", "go:count"]);
+  return c;
+}
+function setupSteps() {
+  const d = state.device;
+  return [
+    [!!d && d.cal_factor != null, "Calibrate the scale", "go:scale"],
+    [state.tools.length > 0, "Add your tools and weigh each one", "add"],
+    [state.citems.length > 0, "Add consumables (screws, nuts, washers...)", "citem-add"],
+    [(state.spaceUnits || []).length > 0, "Draw your rooms and shelves", "go:splan"],
+    [allEntries().length > 0 && allEntries().every(x => x.it.unit_id), "Say which shelf each item lives on", "go:sitems"],
+    [state.citems.some(i => i.buy_link), "Add buy links and prices so orders are ready to send", "go:items"],
+  ];
+}
+function recentFeed(n) {
+  const a = state.events.map(e => ({ ts: e.ts, what: eventText(e), note: e.action === "unknown" ? "Needs checking" : "", warn: needsLook(e) }));
+  const b = state.cevents.map(e => ({ ts: e.ts, what: `${e.item_name || "Item"}: ${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})`, note: [e.note, e.person].filter(Boolean).join(" · ") }));
+  return [...a, ...b].sort((x, y) => new Date(y.ts) - new Date(x.ts)).slice(0, n);
+}
+function renderHome() {
+  const att = attention(), steps = setupSteps(), todo = steps.filter(s => !s[0]).length;
+  const inN = state.tools.filter(t => t.status === "in").length, low = state.citems.filter(lowItem).length, feed = recentFeed(6);
+  $("#main").innerHTML = `<div class="summary"><div><h1>${att.some(a => a[0] === "warn") ? "Needs a look" : "All in order"}</h1>
+    <p>${state.tools.length ? `${inN} of ${state.tools.length} tools in` : "No tools yet"} · ${state.citems.length ? `${state.citems.length} consumables, ${low ? low + " low" : "none low"}` : "no consumables yet"} · ${openReorder().length} on the order list</p></div></div>
+  <div class="srch">${icon("find")}<input id="q" type="search" placeholder="Find a tool or part: name, size or shelf" value="${esc(state.q || "")}" autocomplete="off" aria-label="Search tools and consumables"><div id="qRes"></div></div>
+  ${att.length ? `<div class="cards4">${att.map(([cls, n, txt, btn, act]) => `<div class="acard ${cls}"><div class="n num">${n}</div><p>${txt}</p><button class="btn sec" data-act="${act}">${btn}</button></div>`).join("")}</div>`
+    : `<div class="cards4"><div class="acard ok"><div class="n">✓</div><p>Nothing needs doing. Tools are tracked, stock is above minimum and the order list is empty.</p></div></div>`}
+  <section class="block"><h2>Quick actions</h2><div class="qa">
+    <button data-act="go:s3d">${icon("cube")}Show me where</button>
+    <button data-act="go:count">${icon("count")}Count by weight</button>
+    <button data-act="go:detect">${icon("camera")}Count by camera</button>
+    <button data-act="go:board">${icon("tools")}Tool board</button>
+    <button data-act="add">${icon("plus")}Add a tool</button>
+    <button data-act="citem-add">${icon("plus")}Add a consumable</button></div></section>
+  ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
+  <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
+  const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? resultRows(searchItems(q.value)) : ""; };
+  q.oninput = paint; q.onkeydown = e => { if (e.key === "Enter") { const r = searchItems(q.value)[0]; if (r) itemSheet(r.kind, r.it.id); } if (e.key === "Escape") { q.value = ""; paint(); } }; paint();
+}
+
+/* ---------- item card: everything about one tool or consumable, and what you can do with it ---------- */
+function itemSheet(kind, id) { state.sheet = { kind, id }; paintSheet(); const d = $("#dlg"); if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; }; }
+function placeHtml(it, k) {
+  const units = state.spaceUnits || []; if (!units.length) return `<p class="hint">Draw your shelves under Setup, Space plan, to give it a place you can find in 3D.</p>`;
+  const u = units.find(x => x.id === it?.unit_id);
+  return `<div class="row"><div class="field"><label for="${k}_unit">Shelf or cabinet</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
+    <div class="field" style="max-width:120px"><label for="${k}_lvl">Level</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
+}
+const unitLabel = u => { const r = roomOfUnit(u); return (r ? r.name + " · " : "") + u.name; };
+const levelOpts = (u, lv) => u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
+function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { $("#" + k + "_lvl").innerHTML = levelOpts((state.spaceUnits || []).find(x => x.id === us.value), 1); }; }
+async function savePlace(kind, id, k, it) {
+  const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
+  if ((it?.unit_id || null) === unit && (unit == null || Number(it.level) === lvl)) return;
+  await guard(rpcAuth("toolscale_space_place", { p_kind: kind, p_id: id, p_unit: unit, p_level: lvl }));
+}
+function paintSheet() {
+  const sh = state.sheet; if (!sh) return; const tool = sh.kind === "tool", it = (tool ? state.tools : state.citems).find(x => x.id === sh.id), d = $("#dlg");
+  if (!it) { d.close(); return; }
+  const ord = onOrder(sh.kind, it.id), where = whereText(it);
+  const hist = tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
+  const facts = tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
+    : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
+  d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
+    <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
+    ${ord ? `<div class="banner info" style="margin:0"><span>On the order list: ${ord.qty} × (${esc(ord.reason)}${ord.status === "in_draft" ? ", in the MR draft" : ""}).</span></div>` : ""}
+    <div><h3 style="font-size:22px;margin-bottom:6px">Where it lives</h3><p style="margin:0 0 8px">${where ? esc(where) : `<span class="hint">No place set yet.</span>`}</p>
+      ${it.unit_id ? `<button type="button" class="btn" data-act="locate" data-kind="${sh.kind}" data-id="${it.id}">Show in 3D</button>` : ""}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Change where it lives</summary><div style="margin-top:8px">${placeHtml(it, "sp")}${(state.spaceUnits || []).length ? `<button type="button" class="btn sec" id="spSave" style="margin-top:8px">Save place</button>` : ""}</div></details></div>
+    <div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div></div>
+    <div class="dlg-f">
+      ${tool ? `<button type="button" class="btn sec" data-act="flip" data-id="${it.id}" data-to="${it.status === "out" ? "in" : "out"}">Mark ${it.status === "out" ? "in" : "out"}</button>
+        <button type="button" class="btn sec" data-act="report" data-kind="tool" data-id="${it.id}">Report a problem</button>
+        <button type="button" class="btn sec" data-act="edit" data-id="${it.id}">Edit</button>`
+      : `<button type="button" class="btn sec" data-act="count-item" data-id="${it.id}">Count it</button>
+        <button type="button" class="btn sec" data-act="report" data-kind="consumable" data-id="${it.id}">Reorder</button>
+        <button type="button" class="btn sec" data-act="citem-edit" data-id="${it.id}">Edit</button>`}
+      <button type="submit" class="btn">Close</button></div></form>`;
+  bindPlace("sp");
+  const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
+}
+function roomOfUnit(u) {
+  const sw = Number(u.rot) % 180 !== 0, cx = Number(u.x) + (sw ? u.d : u.w) / 2, cz = Number(u.z) + (sw ? u.w : u.d) / 2;
+  const inside = pts => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
+  return (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points)) || null;
+}
+
 /* ---------- board ---------- */
 function eventText(e) {
   const g = Math.abs(e.delta_g ?? 0);
@@ -447,34 +649,35 @@ function renderBoard() {
   const tools = sortedTools(), out = tools.filter(t => t.status === "out");
   const look = state.events.filter(needsLook);
   let h = "";
-  if (state.device?.mode === "count") h += `<div class="banner info"><span><strong>The scale is in counting mode.</strong> Tool detection is paused. Sign in, then switch to Tools (top left) to resume.</span></div>`;
+  if (state.device?.mode === "count") h += `<div class="banner info"><span><strong>The scale is counting parts.</strong> Tool tracking is paused until it is switched back.</span><button class="btn sec" data-act="scale-tools">Switch back to tools</button></div>`;
   if (look.length) h += `<div class="banner"><span><strong>${look.length} event${look.length > 1 ? "s" : ""} to check.</strong> The scale could not be sure which tool moved.</span>
-    <button class="btn sec" data-act="goto-check">Review</button><button class="btn sec" data-act="dismiss">Dismiss</button></div>`;
+    <button class="btn sec" data-act="goto-check">Check them</button><button class="btn sec" data-act="dismiss">Dismiss all</button></div>`;
   if (!tools.length) {
     $("#main").innerHTML = h + `<div class="empty"><h2>No tools on the board yet</h2><p>Add a tool, then teach the scale its weight by taking it out of the box and putting it back.</p><button class="btn" data-act="goto-tools">Add the first tool</button></div>`;
     return;
   }
   h += `<div class="summary"><div><h1>${tools.length - out.length} of ${tools.length} tools in</h1>
-    <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong> (${ago(t.taken_at)})`).join(", ") + "." : "Everything is back on the board."}</p></div></div>
+    <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong> (${ago(t.taken_at)})`).join(", ") + "." : "Everything is back on the board."} Tap a tool for details.</p></div>
+    <button class="btn sec" data-act="go:tools">Manage tools</button></div>
   <div class="board">${tools.map(t => t.status === "out" ? `
-    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3>${esc(t.name)}</h3><div class="slot">${esc(t.slot || "")}</div></div>
+    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div></div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="in">Mark in</button></div></div>` : `
-    <div class="tile"><div><h3>${esc(t.name)}</h3><div class="slot">${esc(t.slot || "")}</div></div>
+    <div class="tile"><div><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div></div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="out">Mark out</button></div></div>`).join("")}</div>
-  <section class="block"><h2>Latest</h2>${logHtml(state.events.slice(0, 5))}</section>`;
+  <section class="block"><h2>Latest</h2>${logHtml(state.events.slice(0, 5))}<button class="btn sec" style="margin-top:12px" data-act="go:activity">All activity</button></section>`;
   $("#main").innerHTML = h;
 }
 
 /* ---------- tools ---------- */
 function renderTools() {
   const tools = sortedTools();
-  $("#main").innerHTML = `<div class="summary"><div><h1>Tools</h1><p>Each tool needs a weight the scale can recognise. Tools closer than their match windows are flagged, because the scale cannot tell them apart.</p></div>
+  $("#main").innerHTML = `<div class="summary"><div><h1>Tools</h1><p>Your tool list. Each tool needs a weight the scale can recognise; tools too close in weight are flagged, because the scale cannot tell them apart.</p></div>
     <button class="btn" data-act="add">Add tool</button></div>
   ${tools.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Tool</th><th>Lives in</th><th>Weight</th><th>Window</th><th>State</th><th></th></tr></thead><tbody>
-  ${tools.map(t => { const c = closeTo(t); return `<tr><td><strong>${esc(t.name)}</strong>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
-    <td>${esc(locText(t) || t.slot || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
+  ${tools.map(t => { const c = closeTo(t); return `<tr><td><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}"><strong>${esc(t.name)}</strong></button>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
+    <td>${esc(whereText(t) || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
     <td><span class="chip ${t.status}">${t.status === "out" ? "Out " + esc(ago(t.taken_at)) : "In"}</span></td>
-    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="tool" data-id="${t.id}">Replace</button>${t.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="tool" data-id="${t.id}">Show</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
+    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="tool" data-id="${t.id}">Report</button>${t.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="tool" data-id="${t.id}">Show</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
     : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first tool to get started.</p></div>`}`;
 }
 
@@ -484,7 +687,8 @@ function openDialog(tool, prefill) {
   d.innerHTML = `<form method="dialog" id="toolForm"><div class="dlg-h"><h2>${tool ? "Edit tool" : prefill ? "Save as new tool" : "Add tool"}</h2></div>
   <div class="dlg-b">
     <div><label for="f_name">Name</label><input id="f_name" type="text" required maxlength="60" value="${esc(tool?.name || "")}"></div>
-    <div><label for="f_slot">Lives in</label><input id="f_slot" type="text" maxlength="60" placeholder="e.g. Drawer 2" value="${esc(tool?.slot || "")}"></div>
+    ${placeHtml(tool, "fp")}
+    <div><label for="f_slot">Spot label (optional)</label><input id="f_slot" type="text" maxlength="60" placeholder="e.g. Drawer 2, top tray" value="${esc(tool?.slot || "")}"><p class="hint">Shown on the board tile when the tool has no shelf.</p></div>
     <div class="row"><div class="field"><label for="f_w">Weight (g)</label><input id="f_w" type="number" step="0.1" min="0.5" required value="${tool ? tool.weight_g : prefill ? prefill.weight : ""}"></div>
       <div class="field"><label for="f_t">Match window &plusmn; (g)</label><input id="f_t" type="number" step="0.5" min="0.5" required value="${tool ? tool.tol_g : 3}"></div></div>
     ${prefill ? `<p class="hint">Weight comes from one reading of ${fmtG(prefill.weight)} g. Use Start teaching below to refine it.</p>` : ""}
@@ -493,7 +697,7 @@ function openDialog(tool, prefill) {
   </div>
   <div class="dlg-f">${tool ? `<button type="button" class="btn danger" id="f_del" style="margin-right:auto">Delete</button>` : ""}
     <button type="button" class="btn sec" id="f_cancel">Cancel</button><button type="submit" class="btn" id="f_save">Save tool</button></div></form>`;
-  renderTeach(); d.showModal();
+  renderTeach(); bindPlace("fp"); if (!d.open) d.showModal();
   $("#f_cancel").onclick = closeDialog; d.oncancel = () => stopTeach();
   $("#f_del")?.addEventListener("click", async () => {
     if (!confirm(`Delete ${tool.name}? Its history stays in the activity log.`)) return;
@@ -505,6 +709,7 @@ function openDialog(tool, prefill) {
     if (!row.name || !(row.weight_g > 0)) return;
     const tid = await guard(rpcAuth("toolscale_save_tool", { p_id: tool ? tool.id : null, p_name: row.name, p_slot: row.slot, p_weight: row.weight_g, p_tol: row.tol_g, p_out: !tool && !!state.prefill?.out }));
     await guard(rpcAuth("toolscale_set_purchase", { p_kind: "tool", p_id: tid, ...readPurchase("p") }));
+    await savePlace("tool", tid, "fp", tool);
     await refreshAll(); closeDialog(); toast(tool ? "Saved" : row.name + " added");
   };
 }
@@ -571,8 +776,14 @@ function logHtml(list) {
   if (!list.length) return `<div class="empty"><p>No activity yet. Take a tool out of the box to see it here.</p></div>`;
   return `<ul class="log">${list.map(e => `<li class="${needsLook(e) ? "check" : ""}"><div class="t">${esc(when(e.ts))}</div>
     <div><div class="what">${esc(eventText(e))}${e.confidence === "low" && e.action !== "unknown" ? ` <span class="chip warn">Check this</span>` : ""}</div>
-    ${e.action === "unknown" ? `<div class="note">${esc(e.note || "")}. If a tool moved, mark it in or out on the Board.</div>${Math.abs(e.delta_g) >= 2 ? `<button class="btn sec" data-act="newfromevent" data-id="${e.id}" style="margin-top:8px">Save as new tool</button>` : ""}`
+    ${e.action === "unknown" ? `<div class="note">${esc(e.note || "")}.</div>${needsLook(e) ? resolveHtml(e) : ""}`
       : e.note && e.action !== "manual" ? `<div class="note">${esc(e.note)}</div>` : ""}</div></li>`).join("")}</ul>`;
+}
+function resolveHtml(e) {   // say which tool it was, or that it was not a tool at all
+  const g = Math.abs(Number(e.delta_g)), near = [...state.tools].sort((a, b) => Math.abs(a.weight_g - g) - Math.abs(b.weight_g - g));
+  return `<div class="row" style="margin-top:8px;align-items:center"><select class="sel" id="rs-${e.id}" style="width:auto;min-width:160px" aria-label="Which tool">${near.map(t => `<option value="${t.id}">${esc(t.name)} (${fmtG(t.weight_g, 0)} g)</option>`).join("")}</select>
+    ${near.length ? `<button class="btn sec" data-act="resolve" data-id="${e.id}" data-to="${e.delta_g < 0 ? "out" : "in"}">It was this tool ${e.delta_g < 0 ? "taken out" : "put back"}</button>` : ""}
+    ${g >= 2 ? `<button class="btn sec" data-act="newfromevent" data-id="${e.id}">It is a new tool</button>` : ""}<button class="linkbtn" style="color:var(--steel)" data-act="resolve-skip" data-id="${e.id}">Not a tool, ignore</button></div>`;
 }
 function renderActivity() {
   const f = state.filter, list = state.events.filter(e => f === "all" || (f === "check" ? (e.action === "unknown" || e.confidence === "low") : e.action === f));
@@ -587,7 +798,7 @@ function devInfo() {
   return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
 }
 function accHtml() {
-  if (state.mode === "count") return `<p class="hint">Tool accuracy check is on the Tools page. In Consumables mode, check the scale with a known weight instead.</p>`;
+  if (state.device?.mode === "count") return `<p class="hint">The scale is counting parts, so the tool check is paused. Leave the Count page to switch back.</p>`;
   const d = state.device, inn = state.tools.filter(t => t.status === "in");
   if (!d || d.stable_g == null || !online()) return `<p class="hint">Waiting for the scale.</p>`;
   const exp = inn.reduce((a, t) => a + Number(t.weight_g), 0), act = Number(d.stable_g), err = act - exp;
@@ -643,20 +854,27 @@ async function runCommand(cmd) {
 const CATS = ["Screw", "Bolt", "Nut", "Washer", "Rivet", "Pin", "Other"];
 const lowItem = i => Number(i.min_stock) > 0 && Number(i.count_on_hand) <= Number(i.min_stock);
 function renderStock() {
-  const items = state.citems, low = items.filter(lowItem);
-  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>No consumables yet</h2><p>Add a screw, bolt, nut or washer with its weight per piece, then count it by putting the bin on the scale.</p><button class="btn" data-act="citem-add">Add the first item</button></div>`; return; }
+  const items = state.citems, low = items.filter(lowItem), f = state.stockF || "all", q = (state.stockQ || "").toLowerCase();
+  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>No consumables yet</h2><p>Add a screw, bolt, nut or washer with its weight per piece, then count it by putting the bin on the scale.</p><button class="btn" data-act="citem-add">Add the first consumable</button></div>`; return; }
+  const stale = i => !i.counted_at || Date.now() - new Date(i.counted_at) > 30 * 86400e3;
+  const list = items.filter(i => (f === "all" || (f === "low" ? lowItem(i) : stale(i))) && (!q || (fullName(i) + " " + i.category + " " + whereText(i)).toLowerCase().includes(q)));
   $("#main").innerHTML = `<div class="summary"><div><h1>${low.length ? low.length + " low on stock" : "Stock is OK"}</h1>
-    <p>${items.length} item${items.length > 1 ? "s" : ""}. ${low.length ? "Low: " + low.map(i => `<strong>${esc(i.name)}</strong> (${i.count_on_hand})`).join(", ") + "." : "Nothing is at or below its minimum."}</p></div>
-    <button class="btn" data-act="goto-count">Count now</button></div>
-  <div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th></tr></thead><tbody>
-  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(locText(i) || i.location || "-")}</td>
-    <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td></tr>`).join("")}</tbody></table></div>`;
+    <p>${items.length} consumable${items.length > 1 ? "s" : ""}. ${low.length ? "Low: " + low.map(i => `<strong>${esc(i.name)}</strong> (${i.count_on_hand})`).join(", ") + "." : "Nothing is at or below its minimum."}</p></div>
+    <div class="row"><button class="btn" data-act="go:count">Count by weight</button><button class="btn sec" data-act="go:detect">Count by camera</button></div></div>
+  <div class="row" style="margin-bottom:12px;align-items:center"><div class="field" style="max-width:320px"><input id="stQ" type="search" placeholder="Filter by name or size" value="${esc(state.stockQ || "")}" aria-label="Filter"></div>
+    <div class="filters" role="group" aria-label="Show" style="margin:0">${[["all", "All"], ["low", "Low"], ["stale", "Not counted in 30 days"]].map(([k, l]) => `<button data-act="stockf" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div></div>
+  ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th><th></th></tr></thead><tbody>
+  ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(whereText(i) || "-")}</td>
+    <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}${onOrder("consumable", i.id) ? ` <span class="chip">On order</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td>
+    <td><button class="btn sec" data-act="count-item" data-id="${i.id}">Count</button>${lowItem(i) && !onOrder("consumable", i.id) ? ` <button class="btn sec" data-act="reorder-suggest" data-id="${i.id}">Order</button>` : ""}${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty"><p>Nothing matches this filter.</p></div>`}`;
+  const sq = $("#stQ"); sq.oninput = () => { state.stockQ = sq.value; const pos = sq.selectionStart; renderStock(); labelTables(); const n = $("#stQ"); n.focus(); n.setSelectionRange(pos, pos); };
 }
 function renderItems() {
   const items = state.citems;
-  $("#main").innerHTML = `<div class="summary"><div><h1>Items</h1><p>Each item needs its weight per piece and the weight of its empty bin. Weigh 10 to 20 pieces on the Count tab to learn it.</p></div><button class="btn" data-act="citem-add">Add item</button></div>
+  $("#main").innerHTML = `<div class="summary"><div><h1>Consumables</h1><p>Your list of screws, bolts, nuts and other parts. Each needs its weight per piece and the weight of its empty bin; weigh 10 to 20 pieces on Stock, Count by weight, to learn it.</p></div><button class="btn" data-act="citem-add">Add consumable</button></div>
   ${items.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Per piece</th><th>Empty bin</th><th>Minimum</th><th>Where</th><th></th></tr></thead><tbody>
-  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(locText(i) || i.location || "-")}</td>
+  ${items.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(whereText(i) || "-")}</td>
     <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="consumable" data-id="${i.id}">Reorder</button>${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
 }
 function renderHistory() {
@@ -667,12 +885,12 @@ function renderHistory() {
 }
 function renderCount() {
   const items = state.citems;
-  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>Add an item first</h2><p>Counting needs the weight of one piece.</p><button class="btn" data-act="citem-add">Add an item</button></div>`; return; }
+  if (!items.length) { $("#main").innerHTML = `<div class="empty"><h2>Add a consumable first</h2><p>Counting needs the weight of one piece.</p><button class="btn" data-act="citem-add">Add an item</button></div>`; return; }
   const it = items.find(i => i.id === state.countItem) || items[0]; state.countItem = it.id;
   const cont = state.cont[it.id] ?? it.container_g;
   const dm = state.device?.mode;
-  $("#main").innerHTML = `${dm && dm !== "count" ? `<div class="banner info"><span><strong>The scale is still in tool mode.</strong> Tool matching may react while you count. Sign in and switch to Consumables to pause it.</span></div>` : ""}
-  <div class="summary"><div><h1>Count</h1><p>Put the empty bin on the scale, press <em>Use current reading</em>, then add the parts. The count updates by itself.</p></div></div>
+  $("#main").innerHTML = `${dm && dm !== "count" ? `<div class="banner info"><span><strong>The scale is still tracking tools.</strong> Tool matching may react while you count.${state.user ? "" : " Sign in so it switches to counting while you are on this page."}</span><button class="btn sec" data-act="scale-count">Switch to counting</button></div>` : dm === "count" ? `<div class="banner info"><span>Tool tracking is paused while you count. It switches back when you leave this page.</span></div>` : ""}
+  <div class="summary"><div><h1>Count by weight</h1><p>1. Choose the item. 2. Put its empty bin on the scale and press <em>Use current reading</em>. 3. Add the parts and press <em>Save count to stock</em>.</p></div></div>
   <div class="grid2">
     <div class="panel"><h2>Item</h2><div class="field"><label for="cntSel">What are you counting?</label>
       <select id="cntSel" style="width:100%;padding:8px;min-height:42px;border:2px solid #9EAAB0;background:#fff">${items.map(i => `<option value="${i.id}" ${i.id === it.id ? "selected" : ""}>${esc(i.name)}${i.spec ? " (" + esc(i.spec) + ")" : ""}</option>`).join("")}</select></div>
@@ -715,12 +933,13 @@ function itemDialog(item) {
     <div class="row"><div class="field"><label for="i_u">Weight per piece (g)</label><input id="i_u" type="number" step="0.001" min="0.001" required value="${item ? item.unit_g : ""}"></div>
       <div class="field"><label for="i_c">Empty bin (g)</label><input id="i_c" type="number" step="0.1" min="0" required value="${item ? item.container_g : 0}"></div></div>
     <div class="row"><div class="field"><label for="i_m">Reorder at or below</label><input id="i_m" type="number" step="1" min="0" value="${item ? item.min_stock : 0}"></div>
-      <div class="field"><label for="i_l">Where it lives</label><input id="i_l" type="text" maxlength="60" placeholder="e.g. Shelf 2" value="${esc(item?.location || "")}"></div></div>
+      <div class="field"><label for="i_l">Spot label (optional)</label><input id="i_l" type="text" maxlength="60" placeholder="e.g. Bin 4" value="${esc(item?.location || "")}"></div></div>
+    ${placeHtml(item, "ip")}
     ${item ? "" : `<div><label for="i_n">Starting count (optional)</label><input id="i_n" type="number" step="1" min="0" placeholder="leave empty if unknown"></div>`}
     ${purchaseHtml(item, "q")}
-    <p class="hint">Not sure of the weight? Save a guess, then use Learn weight per piece on the Count tab.</p></div>
+    <p class="hint">Not sure of the weight per piece? Save a guess, then use Learn weight per piece on Stock, Count by weight.</p></div>
   <div class="dlg-f">${item ? `<button type="button" class="btn danger" id="i_del" style="margin-right:auto">Hide</button>` : ""}<button type="button" class="btn sec" id="i_cancel">Cancel</button><button type="submit" class="btn">Save item</button></div></form>`;
-  d.showModal();
+  if (!d.open) d.showModal(); bindPlace("ip");
   $("#i_cancel").onclick = () => d.close();
   $("#i_del")?.addEventListener("click", async () => {
     if (!confirm(`Hide ${item.name}? Its history is kept.`)) return;
@@ -733,6 +952,7 @@ function itemDialog(item) {
       const id = await guard(rpcAuth("toolscale_consumable_save", { p_id: item?.id || null, p_name: $("#i_name").value, p_category: $("#i_cat").value, p_spec: $("#i_spec").value,
         p_unit_g: Number($("#i_u").value), p_container_g: Number($("#i_c").value), p_min_stock: Number($("#i_m").value || 0), p_location: $("#i_l").value, p_count: n === "" || n == null ? null : Number(n) }));
       await guard(rpcAuth("toolscale_set_purchase", { p_kind: "consumable", p_id: id, ...readPurchase("q") }));
+      await savePlace("consumable", id, "ip", item);
       state.countItem = state.countItem || id; await refreshAll(); d.close(); renderTab(); toast("Saved");
     } catch (err) {}
   };
@@ -756,15 +976,11 @@ const openReorder = () => state.reorder.filter(r => r.status === "open");
 const suggestions = () => state.citems.filter(lowItem).filter(i => !state.reorder.some(r => r.kind === "consumable" && r.item_id === i.id));
 const reorderItem = r => (r.kind === "tool" ? state.tools : state.citems).find(x => x.id === r.item_id) || {};
 function updateBadge() {
-  const n = openReorder().length + suggestions().length, b = document.querySelector('.tab[data-tab="reorder"]');
-  if (b) b.textContent = n ? `Reorder (${n})` : "Reorder";
-}
-function renderAlert() {
-  const m = $("#main"); if (!m || state.tab === "reorder") return;
-  const n = openReorder().length + suggestions().length; if (!n) return;
-  const d = document.createElement("div"); d.className = "banner info";
-  d.innerHTML = `<span><strong>${n} item${n > 1 ? "s" : ""} to reorder or replace.</strong> They are collected for this month's MR form.</span><button class="btn sec" data-act="goto-reorder">Review</button>`;
-  m.prepend(d);
+  const set = (sec, n) => { const b = document.querySelector(`.tab[data-sec="${sec}"] .bd`); if (b) b.textContent = n ? n : ""; };
+  set("orders", openReorder().length + suggestions().length);
+  set("tools", state.tools.filter(t => t.status === "out").length);
+  set("stock", state.citems.filter(lowItem).length);
+  set("home", state.events.filter(needsLook).length);
 }
 function renderReorder() {
   const open = openReorder(), drafted = state.reorder.filter(r => r.status === "in_draft"), sug = suggestions();
@@ -794,7 +1010,7 @@ function reportDialog(kind, item) {
     <div><label for="r_note">Note (optional)</label><input id="r_note" type="text" maxlength="120"></div>
     <p class="hint">It is added to the reorder list. Nothing is sent until you add the list to your MR draft.</p></div>
   <div class="dlg-f"><button type="button" class="btn sec" id="r_cancel">Cancel</button><button type="submit" class="btn">Add to reorder list</button></div></form>`;
-  d.showModal(); $("#r_cancel").onclick = () => d.close();
+  if (!d.open) d.showModal(); $("#r_cancel").onclick = () => d.close();
   $("#repForm").onsubmit = async e => {
     e.preventDefault();
     try { await guard(rpcAuth("toolscale_report_replacement", { p_kind: kind, p_id: item.id, p_reason: $("#r_why").value, p_qty: Number($("#r_qty").value || 1), p_note: $("#r_note").value }));
@@ -804,7 +1020,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "11";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "12";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -841,23 +1057,28 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  const sw = Number(u.rot) % 180 !== 0, cx = Number(u.x) + (sw ? u.d : u.w) / 2, cz = Number(u.z) + (sw ? u.w : u.d) / 2;
-  const inside = (pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
-  const r = (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points));
-  return (r ? r.name + " · " : "") + u.name + " · level " + it.level;
+  return unitLabel(u) + " · level " + it.level;
 }
-function locateItem(kind, id) { state.spaceFocus = { kind, id }; state.mode = "space"; state.tab = "s3d"; try { localStorage.setItem("ts_mode", "tools"); } catch (e) {} route(); }
+function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 
 /* ---------- clicks ---------- */
 async function onMainClick(ev) {
   const el = ev.target.closest("[data-act]"); if (!el) return; const a = el.dataset.act;
   try {
-    if (a === "goto-tools") setTab("tools");
+    if (a.startsWith("go:")) { if ($("#dlg").open) $("#dlg").close(); setTab(a.slice(3)); }
+    else if (a === "sheet") itemSheet(el.dataset.kind, el.dataset.id);
+    else if (a === "count-item") { state.countItem = el.dataset.id; if ($("#dlg").open) $("#dlg").close(); setTab("count"); }
+    else if (a === "stockf") { state.stockF = el.dataset.f; renderStock(); labelTables(); }
+    else if (a === "scale-count") requireAuth(() => setScaleMode("count"));
+    else if (a === "scale-tools") requireAuth(() => setScaleMode("tools"));
+    else if (a === "resolve") requireAuth(async () => { const id = el.dataset.id, tid = $("#rs-" + id)?.value; if (!tid) return; try { await guard(rpcAuth("toolscale_set_status", { p_tool: tid, p_status: el.dataset.to })); resolveEvent(id); await refreshAll(); renderTab(); toast("Fixed: " + (state.tools.find(t => t.id === tid)?.name || "tool") + " marked " + el.dataset.to); } catch (e) {} });
+    else if (a === "resolve-skip") { resolveEvent(el.dataset.id); renderTab(); }
+    else if (a === "goto-tools") setTab("tools");
     else if (a === "locate") locateItem(el.dataset.kind, el.dataset.id);
     else if (a === "goto-reorder") setTab("reorder");
     else if (a === "clear-msg") { state.draftMsg = null; renderReorder(); }
     else if (a === "report") requireAuth(() => reportDialog(el.dataset.kind, (el.dataset.kind === "tool" ? state.tools : state.citems).find(x => x.id === el.dataset.id)));
-    else if (a === "reorder-suggest") requireAuth(async () => { const i = state.citems.find(x => x.id === el.dataset.id); try { await guard(rpcAuth("toolscale_report_replacement", { p_kind: "consumable", p_id: i.id, p_reason: "Low stock", p_qty: i.reorder_qty || 1, p_note: i.count_on_hand + " left (minimum " + i.min_stock + ")" })); await refreshAll(); renderReorder(); } catch (e) {} });
+    else if (a === "reorder-suggest") requireAuth(async () => { const i = state.citems.find(x => x.id === el.dataset.id); try { await guard(rpcAuth("toolscale_report_replacement", { p_kind: "consumable", p_id: i.id, p_reason: "Low stock", p_qty: i.reorder_qty || 1, p_note: i.count_on_hand + " left (minimum " + i.min_stock + ")" })); await refreshAll(); renderTab(); toast(i.name + " added to the order list"); } catch (e) {} });
     else if (a === "reorder-dismiss") requireAuth(async () => { try { await guard(rpcAuth("toolscale_reorder_update", { p_id: el.dataset.id, p_qty: null, p_dismiss: true })); await refreshAll(); renderReorder(); } catch (e) {} });
     else if (a === "to-draft") requireAuth(async () => { try { state.draftMsg = await guard(rpcAuth("toolscale_reorder_to_draft", {})); await refreshAll(); renderReorder(); } catch (e) {} });
     else if (a === "goto-count") setTab("count");
@@ -880,7 +1101,7 @@ async function onMainClick(ev) {
     else if (a === "newfromevent") { const ev2 = state.events.find(x => String(x.id) === el.dataset.id); requireAuth(() => openDialog(null, { weight: Math.round(Math.abs(ev2.delta_g) * 10) / 10, out: ev2.delta_g < 0 })); }
     else if (a === "edit") requireAuth(() => openDialog(state.tools.find(t => t.id === el.dataset.id)));
     else if (a === "filter") { state.filter = el.dataset.f; renderActivity(); }
-    else if (a === "flip") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); refreshAll(); } catch (e) {} });
+    else if (a === "flip") { const sh = state.sheet; requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_status", { p_tool: el.dataset.id, p_status: el.dataset.to })); await refreshAll(); if (sh && $("#dlg").open) itemSheet(sh.kind, sh.id); } catch (e) {} }); }
     else if (a === "cmd") requireAuth(async () => { el.disabled = true; await runCommand(el.dataset.cmd).finally(() => el.disabled = false); });
     else if (a === "savemin") requireAuth(async () => { try { await guard(rpcAuth("toolscale_set_min_change", { p_device: devId(), p_g: Number($("#minG").value) })); toast("Saved"); refreshDevice(); } catch (e) {} });
     else if (a === "pause") requireAuth(async () => { try { await setLearn(Number(el.dataset.s)); renderScale(); } catch (e) {} });

@@ -43,6 +43,10 @@ h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.05;margin:0;le
 .vcam{position:relative;background:#000;width:100%;max-width:640px;aspect-ratio:16/9;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .vcam video{width:100%;height:100%;object-fit:contain}
 .vroi{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:3px dashed var(--hivis);box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.split{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(240px,1fr);gap:16px}
+.split>*{min-width:0}
+@media (max-width:760px){.split{grid-template-columns:minmax(0,1fr)}}
+.lg{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px}
 .bigcount{font:700 96px/1 var(--display)}
 .chip.low{border-color:var(--alert);color:var(--alert)}
 .tabs{max-width:1100px;margin:0 auto;padding:0 var(--s4);display:flex;gap:var(--s5);overflow-x:auto}
@@ -198,7 +202,8 @@ try { if (localStorage.getItem("ts_mode") === "count") { state.mode = "count"; s
 const devId = () => SCALES[state.mode] || DEVICE_ID;
 const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
                count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]],
-               vision: [["identify", "Identify"], ["detect", "Detect"], ["label", "Label"], ["train", "Train"], ["vlog", "Log"]] };
+               vision: [["identify", "Identify"], ["detect", "Detect"], ["label", "Label"], ["train", "Train"], ["vlog", "Log"]],
+               space: [["splan", "Plan"], ["s3d", "3D"], ["sitems", "Items"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -320,7 +325,7 @@ function startApp() {
   $("#app").innerHTML = `
   <header class="hdr"><div class="hdr-in">
     <div class="brand">Tool Scale</div>
-    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button><button data-mode="vision" aria-pressed="${state.mode === "vision"}">Vision</button></div>
+    <div class="modesw" role="group" aria-label="Mode"><button data-mode="tools" aria-pressed="${state.mode === "tools"}">Tools</button><button data-mode="count" aria-pressed="${state.mode === "count"}">Consumables</button><button data-mode="vision" aria-pressed="${state.mode === "vision"}">Vision</button><button data-mode="space" aria-pressed="${state.mode === "space"}">Space</button></div>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
@@ -346,10 +351,10 @@ function startApp() {
 function setMode(m) {
   if (m === state.mode) return;
   state.mode = m; state.tab = TABS[m][0][0]; state.device = null; state.countItem = null;
-  try { localStorage.setItem("ts_mode", m === "vision" ? "tools" : m); } catch (e) {}
+  try { localStorage.setItem("ts_mode", m === "count" ? "count" : "tools"); } catch (e) {}
   route();
   /* the physical scale pauses tool matching while it is counting; only a signed-in user can change that */
-  if (state.token && m !== "vision") rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
+  if (state.token && (m === "tools" || m === "count")) rpcAuth("toolscale_set_device_mode", { p_device: devId(), p_mode: m }).then(() => refreshDevice(), () => {});
 }
 function setTab(t) {
   state.tab = t;
@@ -365,8 +370,9 @@ function labelTables() {
 function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
+  if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
   if (!TABS[state.mode].some(([k]) => k === state.tab)) state.tab = TABS[state.mode][0][0];
-  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel })[state.tab](); renderBanner(); renderAlert(); labelTables();
+  ({ board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems })[state.tab](); renderBanner(); renderAlert(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -384,17 +390,19 @@ async function refreshDevice() {
 }
 async function refreshAll() {
   try {
-    const [tools, events, citems, cevents, reorder] = await Promise.all([
+    const [tools, events, citems, cevents, reorder, srooms, sunits] = await Promise.all([
       guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
       guard(sb.from("consumables").select("*").eq("active", true).order("name")),
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
+      guard(sb.from("space_rooms").select("id,name").eq("active", true)),
+      guard(sb.from("space_units").select("id,room_id,name,levels").eq("active", true)),
     ]);
     await refreshDevice();
-    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; updateBadge();
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; updateBadge(); if (changed && window.SpaceUI && state.tab === "s3d") SpaceUI.onData();
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -402,7 +410,7 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel"))) renderTab();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
   } catch (e) { /* banner already shown */ }
 }
@@ -464,9 +472,9 @@ function renderTools() {
     <button class="btn" data-act="add">Add tool</button></div>
   ${tools.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Tool</th><th>Lives in</th><th>Weight</th><th>Window</th><th>State</th><th></th></tr></thead><tbody>
   ${tools.map(t => { const c = closeTo(t); return `<tr><td><strong>${esc(t.name)}</strong>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
-    <td>${esc(t.slot || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
+    <td>${esc(locText(t) || t.slot || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
     <td><span class="chip ${t.status}">${t.status === "out" ? "Out " + esc(ago(t.taken_at)) : "In"}</span></td>
-    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="tool" data-id="${t.id}">Replace</button></td></tr>`; }).join("")}</tbody></table></div>`
+    <td><button class="btn sec" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="tool" data-id="${t.id}">Replace</button>${t.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="tool" data-id="${t.id}">Show</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`
     : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first tool to get started.</p></div>`}`;
 }
 
@@ -641,15 +649,15 @@ function renderStock() {
     <p>${items.length} item${items.length > 1 ? "s" : ""}. ${low.length ? "Low: " + low.map(i => `<strong>${esc(i.name)}</strong> (${i.count_on_hand})`).join(", ") + "." : "Nothing is at or below its minimum."}</p></div>
     <button class="btn" data-act="goto-count">Count now</button></div>
   <div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th></tr></thead><tbody>
-  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(i.location || "-")}</td>
+  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(locText(i) || i.location || "-")}</td>
     <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function renderItems() {
   const items = state.citems;
   $("#main").innerHTML = `<div class="summary"><div><h1>Items</h1><p>Each item needs its weight per piece and the weight of its empty bin. Weigh 10 to 20 pieces on the Count tab to learn it.</p></div><button class="btn" data-act="citem-add">Add item</button></div>
   ${items.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Per piece</th><th>Empty bin</th><th>Minimum</th><th>Where</th><th></th></tr></thead><tbody>
-  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(i.location || "-")}</td>
-    <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="consumable" data-id="${i.id}">Reorder</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
+  ${items.map(i => `<tr><td><strong>${esc(i.name)}</strong>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(locText(i) || i.location || "-")}</td>
+    <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="consumable" data-id="${i.id}">Reorder</button>${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
 }
 function renderHistory() {
   const list = state.cevents;
@@ -796,7 +804,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "9";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "10";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -822,12 +830,24 @@ async function detectPage(fn) {
 }
 const renderIdentify = () => visionPage("identify"), renderTrain = () => visionPage("train"), renderVlog = () => visionPage("vlog");
 const renderDetect = () => detectPage("detect"), renderLabel = () => detectPage("label");
+let spaceLoading = null;
+function ensureSpace() { if (window.SpaceUI) return Promise.resolve(); spaceLoading = spaceLoading || loadScript("space.js?v=" + VISION_V).catch(e => { spaceLoading = null; throw e; }); return spaceLoading; }
+async function spacePage(fn) {
+  const tab = state.tab; $("#main").innerHTML = `<div class="empty"><p>Loading...</p></div>`;
+  try { await ensureSpace(); if (state.tab !== tab) return; window.SpaceUI[fn](); }
+  catch (e) { if (state.tab !== tab) return; $("#main").innerHTML = `<div class="banner"><span>Could not load this page: ${esc(e.message || e)}</span></div>`; }
+}
+const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d"), renderSitems = () => spacePage("items");
+/* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
+function locText(it) { const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return ""; const r = (state.spaceRooms || []).find(x => x.id === u.room_id); return (r ? r.name + " · " : "") + u.name + " · level " + it.level; }
+function locateItem(kind, id) { state.spaceFocus = { kind, id }; state.mode = "space"; state.tab = "s3d"; try { localStorage.setItem("ts_mode", "tools"); } catch (e) {} route(); }
 
 /* ---------- clicks ---------- */
 async function onMainClick(ev) {
   const el = ev.target.closest("[data-act]"); if (!el) return; const a = el.dataset.act;
   try {
     if (a === "goto-tools") setTab("tools");
+    else if (a === "locate") locateItem(el.dataset.kind, el.dataset.id);
     else if (a === "goto-reorder") setTab("reorder");
     else if (a === "clear-msg") { state.draftMsg = null; renderReorder(); }
     else if (a === "report") requireAuth(() => reportDialog(el.dataset.kind, (el.dataset.kind === "tool" ? state.tools : state.citems).find(x => x.id === el.dataset.id)));

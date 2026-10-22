@@ -203,7 +203,7 @@ const devId = () => SCALES[state.mode] || DEVICE_ID;
 const TABS = { tools: [["board", "Board"], ["tools", "Tools"], ["activity", "Activity"], ["reorder", "Reorder"], ["scale", "Scale"]],
                count: [["stock", "Stock"], ["count", "Count"], ["items", "Items"], ["history", "History"], ["reorder", "Reorder"], ["scale", "Scale"]],
                vision: [["identify", "Identify"], ["detect", "Detect"], ["label", "Label"], ["train", "Train"], ["vlog", "Log"]],
-               space: [["splan", "Plan"], ["s3d", "3D"], ["sitems", "Items"]] };
+               space: [["splan", "Plan"], ["s3d", "Find"], ["sitems", "Items"]] };
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
 /* ---------- helpers ---------- */
@@ -396,8 +396,8 @@ async function refreshAll() {
       guard(sb.from("consumables").select("*").eq("active", true).order("name")),
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
-      guard(sb.from("space_rooms").select("id,name").eq("active", true)),
-      guard(sb.from("space_units").select("id,room_id,name,levels").eq("active", true)),
+      guard(sb.from("space_rooms").select("id,name,points").eq("active", true)),
+      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot").eq("active", true)),
     ]);
     await refreshDevice();
     const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits), evKey = JSON.stringify(events[0]?.id) + events.length;
@@ -804,7 +804,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "10";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "11";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -839,7 +839,13 @@ async function spacePage(fn) {
 }
 const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d"), renderSitems = () => spacePage("items");
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
-function locText(it) { const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return ""; const r = (state.spaceRooms || []).find(x => x.id === u.room_id); return (r ? r.name + " · " : "") + u.name + " · level " + it.level; }
+function locText(it) {
+  const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
+  const sw = Number(u.rot) % 180 !== 0, cx = Number(u.x) + (sw ? u.d : u.w) / 2, cz = Number(u.z) + (sw ? u.w : u.d) / 2;
+  const inside = (pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
+  const r = (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points));
+  return (r ? r.name + " · " : "") + u.name + " · level " + it.level;
+}
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; state.mode = "space"; state.tab = "s3d"; try { localStorage.setItem("ts_mode", "tools"); } catch (e) {} route(); }
 
 /* ---------- clicks ---------- */

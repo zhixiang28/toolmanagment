@@ -66,18 +66,20 @@
     }
     return out;
   }
-  /* assets standing on a table top: left to right from the left edge, then row by row towards the back; a set left-edge position wins */
+  /* assets on a table: level 1 stands on the top, level 2 stands on the floor under it. Both go left to right, then row by row towards the back; a set left-edge position wins */
   function assetLayout(t) {
-    const f = fp(t), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[t.rot] || DIR[0], alongX = D.R[0] !== 0, top = (t.elev || 0) + t.h, out = [];
-    const list = (state.assets || []).filter(a => a.unit_id === t.id).sort((a, b) => (a.ox == null) - (b.ox == null) || (a.ox ?? 0) - (b.ox ?? 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
-    let x = 0.03, z = 0.03, rowD = 0;
-    for (const a of list) {
-      const w = Number(a.w), d = Number(a.d), h = Number(a.h); let left = a.ox != null ? Number(a.ox) : x, row = z;
-      if (a.ox == null) { if (left + w > t.w - 0.03 && left > 0.04) { x = 0.03; z += rowD + 0.02; rowD = 0; left = x; row = z; } x = left + w + 0.03; rowD = Math.max(rowD, d); }
-      const along = -t.w / 2 + left + w / 2, back = -t.d / 2 + row + d / 2;
-      out.push({ a, cx: cx + D.R[0] * along + D.F[0] * back, cz: cz + D.R[1] * along + D.F[1] * back, y: top, wx: alongX ? w : d, wz: alongX ? d : w, h, over: left + w > t.w + 0.001 || row + d > t.d + 0.001 });
-    }
-    return out;
+    const f = fp(t), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[t.rot] || DIR[0], alongX = D.R[0] !== 0, out = [];
+    const all = (state.assets || []).filter(a => a.unit_id === t.id).sort((a, b) => (a.ox == null) - (b.ox == null) || (a.ox ?? 0) - (b.ox ?? 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    const lay = (list, under) => {
+      const base = (t.elev || 0) + (under ? 0 : t.h), inset = under ? 0.08 : 0.03, clear = under ? t.h - 0.06 : 1e9; let x = inset, z = inset, rowD = 0;
+      for (const a of list) {
+        const w = Number(a.w), d = Number(a.d), h = Number(a.h); let left = a.ox != null ? Number(a.ox) : x, row = z;
+        if (a.ox == null) { if (left + w > t.w - inset && left > inset + 0.01) { x = inset; z += rowD + 0.02; rowD = 0; left = x; row = z; } x = left + w + 0.03; rowD = Math.max(rowD, d); }
+        const along = -t.w / 2 + left + w / 2, back = -t.d / 2 + row + d / 2;
+        out.push({ a, under, cx: cx + D.R[0] * along + D.F[0] * back, cz: cz + D.R[1] * along + D.F[1] * back, y: base, wx: alongX ? w : d, wz: alongX ? d : w, h, over: left + w > t.w + 0.001 || row + d > t.d + 0.001 || h > clear + 0.001 });
+      }
+    };
+    lay(all.filter(a => Number(a.level) !== 2), false); lay(all.filter(a => Number(a.level) === 2), true); return out;
   }
   function assetEntry(aid) { const a = (state.assets || []).find(x => x.id === aid), t = a && a.unit_id && unit(a.unit_id); return t && isTable(t) ? assetLayout(t).find(e => e.a.id === aid) : null; }
   const assetCol = a => a.color || "#7A8DA8";
@@ -99,7 +101,7 @@
     if (!chain.length) return (r ? r.name + " · " : "") + u.name;
     return (r ? r.name + " · " : "") + x.name + (x.kind === "rack" ? " · level " + chain[0].parent_level : "") + " · " + chain.map(c => c.name).join(" › ");
   };
-  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.kind === "box" ? (u.levels > 1 ? " · section " + it.level : "") : isTable(u) ? " · on the top" : " · level " + it.level); };
+  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.kind === "box" ? (u.levels > 1 ? " · section " + it.level : "") : isTable(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level); };
   const contents = u => [...itemsAt(u.id), ...kids(u).flatMap(b => itemsAt(b.id))];
 
   async function load() {
@@ -312,7 +314,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     }
     for (const t of tops().filter(isTable)) for (const e of assetLayout(t)) {
       const x = sx(e.cx - e.wx / 2), y = sy(e.cz - e.wz / 2), w = e.wx * p, h = e.wz * p, col = assetCol(e.a);
-      g.fillStyle = col; g.fillRect(x, y, w, h); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = e.over ? 2 : 1; g.strokeRect(x, y, w, h);
+      g.save(); if (e.under) { g.globalAlpha = .75; g.setLineDash([4, 3]); } g.fillStyle = col; g.fillRect(x, y, w, h); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = e.over ? 2 : 1; g.strokeRect(x, y, w, h); g.restore();
       if (w > 24 && h > 12) { g.save(); g.beginPath(); g.rect(x + 1, y + 1, w - 2, h - 2); g.clip(); g.fillStyle = light(col) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textBaseline = "top"; g.textAlign = "left"; g.fillText(e.a.name, x + 3, y + 3); g.restore(); }
     }
     if (S.multi.length > 1) { const gs = group(), sp = spanOf(gs); g.save(); g.strokeStyle = "#F2C200"; g.lineWidth = 2; g.setLineDash([8, 5]); g.strokeRect(sx(sp.x0) - 5, sy(sp.z0) - 5, (sp.x1 - sp.x0) * p + 10, (sp.z1 - sp.z0) * p + 10); g.restore(); dimLabel(g, gs.length + " selected", (sx(sp.x0) + sx(sp.x1)) / 2, sy(sp.z0) - 16, false); }
@@ -736,7 +738,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       <p class="hint">Snap to wall puts the back against the nearest straight wall.${lift ? " Mount on wall also lifts it 120 cm." : ""} Turn rotates the whole unit; picking a front side keeps the shape in place.</p>`;
     const underCab = !desk && !rack && u.elev > 0 ? sec("undercab", "Under this cabinet", `<p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
         <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div>`) : "";
-    const onTable = desk ? sec("ontable", "On the " + (u.kind === "bench" ? "bench" : "desk"), `${assetLayout(u).length ? assetLayout(u).map(e => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:2px 0"><button type="button" class="linkname" data-act="sheet" data-kind="asset" data-id="${e.a.id}">${esc(e.a.name)}</button><span class="hint" style="margin:0${e.over ? ";color:var(--alert)" : ""}">${Math.round(e.a.w * 100)}×${Math.round(e.a.d * 100)}×${Math.round(e.a.h * 100)} cm${e.over ? " · does not fit" : ""}</span></div>`).join("") : `<p class="hint" style="margin:0 0 8px">Nothing on it yet.</p>`}<button type="button" class="btn sec" data-act="asset-add-here" data-unit="${u.id}" style="margin-top:8px">＋ Add an asset here</button><p class="hint">Assets are equipment such as a PC or an oscilloscope. They stand on the table top, in a line from the left.</p>`) : "";
+    const onTable = desk ? sec("ontable", "On the " + (u.kind === "bench" ? "bench" : "desk"), `${assetLayout(u).length ? assetLayout(u).map(e => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:2px 0"><button type="button" class="linkname" data-act="sheet" data-kind="asset" data-id="${e.a.id}">${esc(e.a.name)}</button><span class="hint" style="margin:0${e.over ? ";color:var(--alert)" : ""}">${e.under ? "under · " : ""}${Math.round(e.a.w * 100)}×${Math.round(e.a.d * 100)}×${Math.round(e.a.h * 100)} cm${e.over ? " · does not fit" : ""}</span></div>`).join("") : `<p class="hint" style="margin:0 0 8px">Nothing on it yet.</p>`}<div class="row" style="margin-top:8px"><button type="button" class="btn sec" data-act="asset-add-here" data-unit="${u.id}" data-level="1">＋ On the top</button><button type="button" class="btn sec" data-act="asset-add-here" data-unit="${u.id}" data-level="2">＋ Under the table</button></div><p class="hint">Assets are equipment such as a PC or an oscilloscope. They stand in a line from the left, on the top or on the floor under the table (a PC tower, for example).</p>`) : "";
     const underDesk = desk ? sec("underdesk", "Under the " + (u.kind === "bench" ? "bench" : "desk"), `<p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button>`) : "";
     const boxesHtml = rack ? sec("boxes", "Boxes on this rack", `${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}" style="margin-left:${e.depth * 14}px"><span>${e.depth ? "↳ " : ""}${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${e.b.levels > 1 ? " · " + e.b.levels + " sections" : ""}${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it under Setup, Place items.</p>`}
         <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="min-width:90px;max-width:130px"><label for="bxL">Put on level</label><select id="bxL" class="sel">${Array.from({ length: u.levels }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></div><button type="button" class="btn" id="bxAdd">Add a box</button></div>`) : "";
@@ -1013,9 +1015,9 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const boxBlock = (b, depth) => `<div style="margin:6px 0 0 ${depth * 14}px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">${depth ? "↑ " : "▢ "}${esc(b.name)}</button>${b.levels > 1 ? "" : addBtn("Add", `data-herebox="${b.id}"`)}</div>${boxBody(b)}${kids(b).map(c => boxBlock(c, depth + 1)).join("")}</div>`;
     let body;
     if (p) body = (u.levels > 1 ? `<div style="margin:6px 0">${secMapHtml(u, true)}</div>` + secList(u) : (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px">${addBtn("Add to this box", `data-here="1"`)}</div>`) + kids(u).map(c => boxBlock(c, 1)).join("") + `<div class="row" style="margin-top:10px"><button class="btn sec" id="sRack">Show the rack</button></div>`;
-    else body = Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => {
+    else body = Array.from({ length: isTable(u) ? 2 : u.levels }, (_, i) => (isTable(u) ? 2 : u.levels) - i).map(lv => {
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
-      return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? "On the top" : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
+      return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
     el.innerHTML = find + `<h2 style="margin-top:16px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
       <div class="row" style="margin-top:10px"><button class="btn sec" id="sEdit">Edit in space plan</button></div>`;
@@ -1046,7 +1048,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         <td><select class="sel iU"><option value="">Not placed</option>${ops(x.it.unit_id)}</select></td><td><select class="sel iL" style="min-width:70px"></select></td><td><button class="btn sec iGo">Place</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Draw some shelves or cabinets under Setup, Space plan, first.</p></div>`;
       $("#iList").querySelectorAll("tbody tr").forEach(tr => {
         const x = allItems().find(a => a.kind === tr.dataset.k && String(a.it.id) === tr.dataset.id), us = tr.querySelector(".iU"), ls = tr.querySelector(".iL");
-        const fill = () => { const uu = unit(us.value); ls.innerHTML = uu ? Array.from({ length: uu.levels }, (_, i) => `<option ${Number(x.it.level) === i + 1 && x.it.unit_id === uu.id ? "selected" : ""}>${i + 1}</option>`).join("") : `<option>-</option>`; ls.disabled = !uu; }; fill(); us.onchange = fill;
+        const fill = () => { const uu = unit(us.value); ls.innerHTML = uu && isTable(uu) ? `<option value="1" ${Number(x.it.level) !== 2 || x.it.unit_id !== uu.id ? "selected" : ""}>on the top</option><option value="2" ${Number(x.it.level) === 2 && x.it.unit_id === uu.id ? "selected" : ""}>under it</option>` : uu ? Array.from({ length: uu.levels }, (_, i) => `<option ${Number(x.it.level) === i + 1 && x.it.unit_id === uu.id ? "selected" : ""}>${i + 1}</option>`).join("") : `<option>-</option>`; ls.disabled = !uu; }; fill(); us.onchange = fill;
         tr.querySelector(".iGo").onclick = () => requireAuth(async () => { try { await guard(rpcAuth("toolscale_space_place", { p_kind: x.kind, p_id: x.it.id, p_unit: us.value || null, p_level: us.value ? Number(ls.value) : null })); await refreshAll(); paint(); toast("Saved"); } catch (e) {} });
       });
       labelTables();
@@ -1054,5 +1056,5 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#iQ").oninput = paint; $("#iUn").onchange = paint; paint();
   }
 
-  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); }, _t: { S, fp, inPoly, area, roomOf } };
+  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); else if (S.view && $("#sProps") && !S.drag && !document.activeElement?.closest?.("#sProps")) { paintProps(); draw(); } }, _t: { S, fp, inPoly, area, roomOf, assetLayout, boxLayout } };
 })();

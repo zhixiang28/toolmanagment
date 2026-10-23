@@ -509,7 +509,7 @@ async function refreshAll() {
     await refreshDevice();
     const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits) + JSON.stringify(assets), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; state.assets = assets; updateBadge(); if (changed && window.SpaceUI && state.tab === "s3d") SpaceUI.onData();
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; state.assets = assets; updateBadge(); if (changed && window.SpaceUI && ["s3d", "splan"].includes(state.tab)) SpaceUI.onData();
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -688,8 +688,8 @@ const unitLabel = u => {
 };
 const isBox = u => u && u.kind === "box";
 const isTableUnit = u => u && (u.kind === "desk" || u.kind === "bench");
-const slotWord = u => isBox(u) ? "Section" : isTableUnit(u) ? "Surface" : "Level";
-const levelOpts = (u, lv) => u && isTableUnit(u) ? `<option value="1" selected>table top</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
+const slotWord = u => isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
+const levelOpts = (u, lv) => u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
 function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { const u = (state.spaceUnits || []).find(x => x.id === us.value); $("#" + k + "_lvl").innerHTML = levelOpts(u, 1); const l = $("#" + k + "_lvlL"); if (l) l.textContent = slotWord(u); }; }
 async function savePlace(kind, id, k, it) {
   const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
@@ -753,7 +753,7 @@ function assetDialog(asset) {
     <div><label for="a_ox">From the left edge of the table (cm)</label><input id="a_ox" type="number" min="0" max="3000" step="1" placeholder="auto" value="${a.ox == null ? "" : cmv(a.ox)}"><p class="hint">Only for assets on a table. Leave empty to line them up by themselves.</p></div>
   </div><div class="dlg-f">${asset ? `<button type="button" class="btn danger" id="a_del" style="margin-right:auto">Remove</button>` : ""}<button type="button" class="btn sec" id="a_cancel">Cancel</button><button type="submit" class="btn">Save asset</button></div></form>`;
   if (!d.open) d.showModal(); bindPlace("ap");
-  const done = () => { state.placeDefault = null; d.close(); if (state.tab !== "s3d") renderTab(); };
+  const done = () => { state.placeDefault = null; d.close(); if (!["s3d", "splan"].includes(state.tab)) renderTab(); };   // the Find and plan pages repaint themselves
   $("#a_cancel").onclick = () => { state.placeDefault = null; d.close(); }; d.oncancel = () => { state.placeDefault = null; };
   $("#a_pre").onchange = e => { if (!e.target.value) return; const [w, dd, h] = e.target.value.split(",").map(Number); $("#a_w").value = w; $("#a_d").value = dd; $("#a_h").value = h; e.target.value = ""; };
   $("#a_del")?.addEventListener("click", async () => { if (!confirm(`Remove ${asset.name}? It is taken off its shelf or table.`)) return; try { await guard(rpcAuth("toolscale_asset_hide", { p_id: asset.id })); await refreshAll(); done(); } catch (e) {} });
@@ -767,7 +767,7 @@ function assetDialog(asset) {
 const againHtml = id => `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="${id}"> Add another here after saving</label>`;
 /* Add something to a shelf, cabinet or box straight from the Find page: new consumable, new tool, or one that is already in the app */
 function addHere(unitId, level) {
-  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : " · level " + level);
+  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : isTableUnit(u) ? (Number(level) === 2 ? " · under the table" : " · on the top") : " · level " + level);
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Add to ${esc(where)}</h2></div><div class="dlg-b"><p style="margin:0">What are you putting here?</p>
     <div style="display:grid;gap:8px"><button type="button" class="btn" id="ah-c">New consumable <span style="font-weight:400">(screws, nuts, washers...)</span></button><button type="button" class="btn" id="ah-t">New tool</button><button type="button" class="btn" id="ah-a">New asset <span style="font-weight:400">(a PC, instrument, machine...)</span></button><button type="button" class="btn sec" id="ah-e">Something already in the app</button></div></div>
     <div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`;
@@ -778,7 +778,7 @@ function addHere(unitId, level) {
   $("#ah-e").onclick = () => placeExisting(unitId, level);
 }
 function placeExisting(unitId, level) {
-  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : " · level " + level);
+  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : isTableUnit(u) ? (Number(level) === 2 ? " · under the table" : " · on the top") : " · level " + level);
   const rows = () => { const q = ($("#pe-q")?.value || "").toLowerCase(), list = allEntries().filter(({ it }) => !q || fullName(it).toLowerCase().includes(q)).sort((a, b) => (a.it.unit_id ? 1 : 0) - (b.it.unit_id ? 1 : 0) || a.it.name.localeCompare(b.it.name)).slice(0, 40);
     return list.length ? list.map(({ kind, it }) => `<li><div class="nm"><strong>${esc(fullName(it))}</strong><div class="sub">${kindName(kind)} · ${it.unit_id === unitId && Number(it.level) === Number(level) ? "already here" : esc(whereText(it) || "not placed yet")}</div></div>${it.unit_id === unitId && Number(it.level) === Number(level) ? `<span class="chip in">Here</span>` : `<button type="button" class="btn sec" data-pk="${kind}:${it.id}">Place here</button>`}</li>`).join("") : `<li><div class="nm hint">Nothing matches.</div></li>`; };
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Place in ${esc(where)}</h2></div><div class="dlg-b"><div><label for="pe-q">Search</label><input id="pe-q" type="search" placeholder="name or size" autocomplete="off"></div><ul class="res" id="pe-l" style="max-height:46vh;overflow:auto">${rows()}</ul><p class="hint">Items not placed yet are listed first.</p></div>
@@ -1185,7 +1185,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "30";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "32";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1222,7 +1222,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? " · on the top" : " · level " + it.level);
+  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 
@@ -1239,7 +1239,7 @@ async function onMainClick(ev) {
     else if (a === "resolve") requireAuth(async () => { const id = el.dataset.id, tid = $("#rs-" + id)?.value; if (!tid) return; try { await guard(rpcAuth("toolscale_set_status", { p_tool: tid, p_status: el.dataset.to })); resolveEvent(id); await refreshAll(); renderTab(); toast("Fixed: " + (state.tools.find(t => t.id === tid)?.name || "tool") + " marked " + el.dataset.to); } catch (e) {} });
     else if (a === "resolve-skip") { resolveEvent(el.dataset.id); renderTab(); }
     else if (a === "asset-add") requireAuth(() => assetDialog(null));
-    else if (a === "asset-add-here") requireAuth(() => { state.placeDefault = { unit_id: el.dataset.unit, level: 1 }; assetDialog(null); });
+    else if (a === "asset-add-here") requireAuth(() => { state.placeDefault = { unit_id: el.dataset.unit, level: Number(el.dataset.level) || 1 }; assetDialog(null); });
     else if (a === "asset-edit") requireAuth(() => assetDialog(state.assets.find(x => x.id === el.dataset.id)));
     else if (a === "asset-flip") requireAuth(async () => { const x = state.assets.find(i => i.id === el.dataset.id), sh = state.sheet; if (!x) return; try { await saveAsset({ ...x, status: x.status === "repair" ? "in_use" : "repair" }); await refreshAll(); if (sh && $("#dlg").open) itemSheet(sh.kind, sh.id); } catch (e) {} });
     else if (a === "sim-all") { state.simAll = true; if (state.tab !== "home") setTab("home"); else renderHome(); $("#simSec")?.scrollIntoView({ block: "start" }); }

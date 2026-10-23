@@ -379,6 +379,7 @@ async function sendEmail(to, subject, html) {
 async function doSignIn(email, pin, msg) {
   const { data, error } = await sb.rpc("toolscale_login", { p_email: email, p_pin: pin });
   if (error || !data?.success) { msg.className = "status-line err"; msg.textContent = error?.message || data?.error || "Sign in failed."; return false; }
+  try { localStorage.setItem("ts_email", email); } catch (e) {}
   setSession(data.token, data.name);
   const d = $("#dlg"); d.close();
   const f = state.afterLogin; state.afterLogin = null;
@@ -388,6 +389,7 @@ async function doSignIn(email, pin, msg) {
 function requireAuth(fn, mode) {
   if (state.user) return fn();
   state.afterLogin = fn;
+  const back = state.loc && unitById(state.loc) ? ["loc", state.loc] : state.sheet ? ["sheet", state.sheet] : null;   // Cancel goes back to where you were
   const d = $("#dlg"); let step = 1, pending = null;
   const up = mode === "signup";
   const draw = () => {
@@ -401,7 +403,8 @@ function requireAuth(fn, mode) {
     <div class="status-line err" id="lmsg"></div>
     <button type="button" class="linkbtn" id="lswitch" style="color:var(--steel);justify-self:start;padding:0">${up ? "Already have an account? Sign in" : "New user? Create an account"}</button></div>
     <div class="dlg-f"><button type="button" class="btn sec" id="lcancel">Cancel</button><button type="submit" class="btn" id="lgo">${code ? "Verify" : up ? "Send code" : "Sign in"}</button></div></form>`;
-    $("#lcancel").onclick = () => { state.afterLogin = null; d.close(); };
+    $("#lcancel").onclick = () => { state.afterLogin = null; if (back && back[0] === "loc") locSheet(back[1]); else if (back) itemSheet(back[1].kind, back[1].id); else d.close(); };
+    try { const em = localStorage.getItem("ts_email"); if (em && $("#em") && !$("#em").value) $("#em").value = em; } catch (e) {}
     $("#lswitch").onclick = () => requireAuth(fn, up ? "signin" : "signup");
     $("#login").onsubmit = onSubmit;
   };
@@ -1221,7 +1224,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "49";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "50";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {

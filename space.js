@@ -1178,8 +1178,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
     el.innerHTML = `<h2 style="margin-top:0">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
-      <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sec" id="sEdit">Edit this place</button><button class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button></div>`;
-    bindFind(); showRes(); $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
+      <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">${state.lite ? "" : `<button class="btn sec" id="sEdit">Edit this place</button>`}<button class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button></div>`;
+    bindFind(); showRes(); if ($("#sEdit")) $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
     el.querySelectorAll("[data-peek]").forEach(b => b.onclick = () => { S.peek = S.peek === b.dataset.peek ? null : b.dataset.peek; if (S.peek === null) S.focusItem = null; const id = b.dataset.peek.startsWith("box:") ? b.dataset.peek.slice(4) : null; S.hl = id || u.id; paintSide(); });
     if ($("#sRack")) $("#sRack").onclick = () => { S.hl = p.id; S.sel = { kind: "unit", id: p.id }; focusUnit(p.id); paintSide(); };
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.hl = b.dataset.box; S.sel = { kind: "unit", id: S.hl }; focusUnit(S.hl); paintSide(); });

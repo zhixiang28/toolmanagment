@@ -209,7 +209,7 @@ code{background:#D9E0E3;padding:0 4px}
 @media (max-width:560px){
   .hdr-in{flex-wrap:wrap;gap:var(--s2) var(--s3)}
   .brand{order:1}
-  #authbtn{order:2}
+  #viewbtn{order:2}#authbtn{order:2}#installbtn{order:2}
   .state{order:4}
   .live{order:5;margin-left:auto}
   .log li{grid-template-columns:1fr;gap:var(--s1)}
@@ -290,7 +290,13 @@ const ICON = {
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
 state.tab = "home"; state.lastTab = {};
+/* Lite view for phones: hides the pages that need a big screen or are set up once (space editor, scales, sorter). Full view shows everything. */
+const LITE_HIDE = new Set(["splan", "scale", "wunits", "sorter", "label", "detect"]);
+state.lite = (() => { try { const v = localStorage.getItem("ts_view"); if (v) return v === "lite"; } catch (e) {} return innerWidth < 700; })();
+const shown = t => !(state.lite && LITE_HIDE.has(t));
+const firstShown = sec => (sec[2].find(([k, , h]) => !h && shown(k)) || [])[0];
 try { const go = new URLSearchParams(location.search).get("go"); if (go && SECTIONS.some(s => s[2].some(([k]) => k === go))) { state.tab = go; localStorage.setItem("ts_tab", go); } else { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } } catch (e) {}
+if (!shown(state.tab)) state.tab = "home";
 const devId = () => state.tab === "count" ? SCALES.count : SCALES.tools;
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
 
@@ -358,6 +364,12 @@ function renderSetup() {
 /* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in.
    Accounts are the MR Tracker accounts (email + 4-digit PIN). */
 const COMPANY_DOMAIN = "spacelogic.com.sg";
+function paintView() { const b = $("#viewbtn"); if (b) b.textContent = state.lite ? "Full view" : "Lite view"; document.body.classList.toggle("lite", state.lite); }
+function toggleView() {
+  state.lite = !state.lite; try { localStorage.setItem("ts_view", state.lite ? "lite" : "full"); } catch (e) {}
+  paintView(); toast(state.lite ? "Lite view: the space editor, scales and sorter setup are hidden. Tap Full view at the top to see them." : "Full view: every page is shown.");
+  if (!shown(state.tab)) setTab(firstShown(sectionOf(state.tab)) || "home"); else { paintNav(); renderTab(); }
+}
 function updateAuthBtn() { const b = $("#authbtn"); if (b) b.textContent = state.user ? "Sign out" : "Sign in"; b.title = state.user?.name ? "Signed in as " + state.user.name : ""; }
 function setSession(token, name) {
   state.token = token; state.user = token ? { name } : null;
@@ -444,6 +456,7 @@ function startApp() {
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
     <button class="linkbtn" id="installbtn" style="font-size:14px" hidden>Install app</button>
+    <button class="linkbtn" id="viewbtn" style="font-size:14px" title="Lite view hides the space editor, scales and sorter setup"></button>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
   <nav class="tabs" aria-label="Sections">${SECTIONS.map(([k, l]) => `<button class="tab" data-sec="${k}">${icon(k)}<span>${l}</span><span class="bd"></span></button>`).join("")}</nav>
@@ -451,9 +464,10 @@ function startApp() {
   <div id="pgseg"></div>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
-  document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec); setTab(state.lastTab[s[0]] || s[2][0][0]); });
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec), last = state.lastTab[s[0]]; setTab(last && shown(last) ? last : firstShown(s) || s[2][0][0]); });
   $("#brand").onclick = () => setTab("home");
   $("#installbtn").onclick = installApp; paintInstall();
+  $("#viewbtn").onclick = toggleView; paintView();
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
@@ -471,11 +485,11 @@ function paintNav() {
   const sec = sectionOf(state.tab);
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.sec === sec[0]));
   const sub = $("#subnav"); if (!sub) return;
-  const tabs = sec[2].filter(t => !t[2]); let h = "";
+  const tabs = sec[2].filter(t => !t[2] && shown(t[0])); let h = "";
   if (tabs.length > 1) tabs.forEach(([k, l]) => { h += `<button data-tab="${k}" ${k === navKey(state.tab) ? 'aria-current="page"' : ""}>${l}</button>`; });
   sub.innerHTML = h; sub.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
   sub.querySelector("[aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  const sg = $("#pgseg"), seg = PAGESEGS.find(g => g.some(([k]) => k === state.tab));
+  const sg = $("#pgseg"), seg0 = PAGESEGS.find(g => g.some(([k]) => k === state.tab)), seg = seg0 && seg0.filter(([k]) => shown(k)).length > 1 ? seg0.filter(([k]) => shown(k)) : null;
   if (sg) { sg.innerHTML = seg ? `<div class="pgseg" role="tablist">${seg.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}</div>` : ""; sg.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab)); }
   updateBadge();
 }
@@ -488,6 +502,7 @@ function syncScaleMode(prev) {
 function setScaleMode(m) { return rpcAuth("toolscale_set_device_mode", { p_device: SCALES[m] || DEVICE_ID, p_mode: m }).then(() => refreshDevice()).then(() => { if (["count", "board"].includes(state.tab) && !$("#dlg").open) renderTab(); }, () => {}); }
 function setTab(t) {
   if (t === "loans") t = "board";
+  if (!shown(t)) { toast("That page is in Full view. Tap Full view at the top to open it."); return; }
   const prev = state.tab; state.tab = t; state.lastTab[sectionOf(t)[0]] = t;
   try { localStorage.setItem("ts_tab", t); } catch (e) {}
   if (prev !== t) state.draftMsg = state.tab === "reorder" ? state.draftMsg : null;
@@ -620,7 +635,7 @@ function attention() {
   if (hasSpace && unplaced) c.push(["", unplaced, `item${unplaced > 1 ? "s have" : " has"} no place on a shelf yet, so Find cannot show ${unplaced > 1 ? "them" : "it"}.`, "Place items", "go:sitems"]);
   const stale = state.citems.filter(i => !i.counted_at || Date.now() - new Date(i.counted_at) > 30 * 86400e3);
   if (stale.length) c.push(["", stale.length, `consumable${stale.length > 1 ? "s" : ""} not counted in the last 30 days.`, "Count", "go:count"]);
-  return c;
+  return c.filter(x => !String(x[4]).startsWith("go:") || shown(x[4].slice(3)));   // lite view leaves out set-up jobs it hides
 }
 function setupSteps() {
   const d = state.device;
@@ -687,7 +702,7 @@ function simPick(key) {
   $("#simForm").onsubmit = async e => { e.preventDefault(); const u = $("#sm_unit").value; if (!u) return toast("Choose a shelf or cabinet."); d.close(); await simMove(key, { unit_id: u, level: Number($("#sm_lvl").value) || 1 }); };
 }
 function renderHome() {
-  const att = attention(), steps = setupSteps(), todo = steps.filter(s => !s[0]).length;
+  const att = attention(), steps = setupSteps().filter(x => !String(x[2]).startsWith("go:") || shown(x[2].slice(3))), todo = steps.filter(s => !s[0]).length;
   const inN = state.tools.filter(t => t.status === "in").length, low = state.citems.filter(lowItem).length, feed = recentFeed(6);
   $("#main").innerHTML = `<div class="summary"><div><h1>${att.some(a => a[0] === "warn") ? "Needs a look" : "All in order"}</h1>
     <p>${state.tools.length ? `${inN} of ${state.tools.length} tools in` : "No tools yet"} · ${state.citems.length ? `${state.citems.length} consumables, ${low ? low + " low" : "none low"}` : "no consumables yet"}${(state.assets || []).length ? ` · ${state.assets.length} asset${state.assets.length === 1 ? "" : "s"}` : ""} · ${openReorder().length} on the order list</p></div></div>
@@ -699,7 +714,7 @@ function renderHome() {
     <button data-act="go:s3d">${icon("cube")}Show me where</button>
     <button data-act="go:count">${icon("count")}Count stock</button>
     <button data-act="go:board">${icon("tools")}Who has what</button>
-    <button data-act="go:splan">${icon("cube")}Edit my space</button>
+    ${shown("splan") ? `<button data-act="go:splan">${icon("cube")}Edit my space</button>` : ""}
     <button data-act="add-any">${icon("plus")}Add an item</button></div></section>
   ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
   <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
@@ -1224,7 +1239,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "50";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "51";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {

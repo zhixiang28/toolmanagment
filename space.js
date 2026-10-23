@@ -1117,13 +1117,13 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function flyTo(g, viaOverview) {
     const k = S.t, C = k.C, cur = () => ({ tx: C.tx, ty: C.ty, tz: C.tz, dist: C.dist, th: C.th, ph: C.ph }), t0 = performance.now(), id = k.fly = (k.fly || 0) + 1, keys = [cur()];
     if (viaOverview) { const bd = bounds(), w = bd.x1 - bd.x0, d = bd.z1 - bd.z0, ov = { tx: (bd.x0 + bd.x1) / 2, tz: (bd.z0 + bd.z1) / 2, ty: 0.4, dist: Math.max(w * 0.9, d * 1.5, 4) + 2, th: g.th, ph: 0.95 }; if (C.dist < ov.dist * 0.85 || Math.hypot(C.tx - ov.tx, C.tz - ov.tz) > 1) keys.push(ov); }   // pull back to see the whole space first
-    keys.push(g); const segs = keys.length - 1, dur = segs > 1 ? 1900 : 750;
+    keys.push(g); const segs = keys.length - 1, dur = segs > 1 ? 4600 : 1800;
     const lerp = (A, B, e) => { let dth = B.th - A.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth)); return { tx: A.tx + (B.tx - A.tx) * e, ty: A.ty + (B.ty - A.ty) * e, tz: A.tz + (B.tz - A.tz) * e, dist: A.dist + (B.dist - A.dist) * e, th: A.th + dth * e, ph: A.ph + (B.ph - A.ph) * e }; };
     const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     const step = now => {
       if (!S.t || k.fly !== id) return; const t = Math.min(1, (now - t0) / dur);
-      // a short pull-back, a brief look at the whole space, then a long glide in
-      const w = segs > 1 ? (t < .35 ? [0, t / .35] : [1, (t - .35) / .65]) : [0, t], i = Math.min(w[0], segs - 1), v = lerp(keys[i], keys[i + 1], ease(Math.min(1, w[1])));
+      // pull back, hold on the whole space for a moment, then a slow glide in
+      const w = segs > 1 ? (t < .25 ? [0, t / .25] : t < .4 ? [1, 0] : [1, (t - .4) / .6]) : [0, t], i = Math.min(w[0], segs - 1), v = lerp(keys[i], keys[i + 1], ease(Math.min(1, w[1])));
       Object.assign(C, v); camUpdate(); if (t < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);

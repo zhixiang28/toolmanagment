@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -117,12 +117,13 @@
     if (document.getElementById("spStyle")) return; const st = document.createElement("style"); st.id = "spStyle";
     st.textContent = `.sptool{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);padding:8px 10px;margin-bottom:12px}
 .sptool .grow{flex:1}.sptool .btn{min-height:38px;padding:4px 12px}
-.seg{display:inline-flex;border:2px solid var(--ink);background:#fff;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg{display:inline-flex;border:2px solid var(--ink);background:#fff;max-width:100%;overflow-x:auto;scrollbar-width:none;flex:0 0 auto}
+.seg button{flex:0 0 auto}
 @media(max-width:560px){.seg button{padding:6px 8px;font-size:14px}.sptool{gap:8px}}
 .seg button{border:0;background:#fff;padding:6px 12px;cursor:pointer;font-weight:600;min-height:36px;white-space:nowrap}
 .seg button+button{border-left:2px solid var(--ink)}
-.seg .sm{display:none}
-@media(max-width:560px){.seg .lg{display:none}.seg .sm{display:inline}.vwh .hint{white-space:nowrap}}
+.seg .ts{display:none}
+@media(max-width:560px){.seg .tl{display:none}.seg .ts{display:inline}.vwh .hint{white-space:nowrap}}
 .seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .addm{position:relative}.addm>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--hivis);border:2px solid var(--ink);padding:4px 14px;min-height:38px;font-weight:700}
 .addm>summary::-webkit-details-marker{display:none}
@@ -135,6 +136,8 @@
 .vwh strong{font:600 20px var(--display)}.vwh .seg button{padding:3px 10px;min-height:30px;font-size:14px}
 .vw canvas{width:100%;display:block;touch-action:none;background:#EEF1F2}.vw .hint{margin:0;padding:6px 12px}
 .spprops{align-self:start}
+.split.wide .spcol{display:contents}.split.wide .vtop{grid-column:1;grid-row:1}.split.wide .spprops{grid-column:2;grid-row:1;position:static;max-height:none;overflow:visible}.split.wide .vfront{grid-column:1/-1;grid-row:2}
+@media(max-width:760px){.split.wide .spprops{grid-column:1;grid-row:3}.split.wide .vfront{grid-row:2}.split.wide .vtop{grid-row:1}}
 @media(min-width:761px){.spprops{position:sticky;top:176px;max-height:calc(100vh - 192px);overflow:auto}}
 details.acc{border-top:1px solid var(--line)}
 details.acc>summary{cursor:pointer;font:600 19px var(--display);padding:8px 0;list-style:none;display:flex;justify-content:space-between;align-items:center}
@@ -154,9 +157,9 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     stop(); ensureStyle(); const me = S.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Space plan</h1><p>Draw rooms from above, then place shelves, cabinets, desks and racks. Drag in the <strong>top view</strong> to move along the floor, and in the <strong>front view</strong> to move sideways and up or down.</p></div></div>
       <div class="sptool" id="sBar"></div>
-      <div class="split"><div class="spcol">
-        <div class="panel vw"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
-        <div class="panel vw"><div class="vwh"><strong>Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
+      <div class="split" id="spSplit"><div class="spcol">
+        <div class="panel vw vtop"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
+        <div class="panel vw vfront"><div class="vwh"><strong id="eTitle">Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span><span class="seg" id="eSz" role="group" aria-label="Size of this view"></span><span class="seg" id="eZ" role="group" aria-label="Zoom this view"><button data-ez="out" aria-label="Zoom out">−</button><button data-ez="in" aria-label="Zoom in">＋</button><button data-ez="fit">Fit</button></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
         <div class="panel spprops" id="sProps"></div></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
     sizeCanvas(); fitView(); fitFront(); paintBar(); paintSeg(); paintProps(); draw(); bindCanvas(); bindFront();
@@ -164,12 +167,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     S.keys = onKey; document.addEventListener("keydown", S.keys);
   }
   function sizeCanvas() {
-    const cv = $("#sCv"), ev = $("#eCv"); if (!cv || !ev) return; const w = Math.max(280, cv.parentElement.clientWidth);
-    cv.width = ev.width = w; cv.height = Math.round(clamp(w * 0.54, 280, 440)); ev.height = Math.round(clamp(w * 0.36, 210, 270));
+    const cv = $("#sCv"), ev = $("#eCv"), sp = $("#spSplit"); if (!cv || !ev) return; sp.classList.toggle("wide", S.esize === "L");   // the large front view takes the full width
+    const w = Math.max(280, cv.parentElement.clientWidth), ew = Math.max(280, ev.parentElement.clientWidth);
+    cv.width = w; cv.height = Math.round(clamp(w * 0.54, 280, 440)); ev.width = ew;
+    ev.height = Math.round(({ S: clamp(ew * 0.36, 210, 270), M: clamp(ew * 0.5, 300, 420), L: clamp(ew * 0.5, 420, 640) })[S.esize] || 300);
   }
   function paintBar() {
     const el = $("#sBar"); if (!el) return; const t = S.tool, T = (id, label) => `<button data-tool="${id}" aria-pressed="${t === id}">${label}</button>`;
-    el.innerHTML = `<span class="seg" role="group" aria-label="Tool">${T("select", "<span class=\"lg\">Select / move</span><span class=\"sm\">Select</span>")}${T("rect", "<span class=\"lg\">Room: rectangle</span><span class=\"sm\">Rect room</span>")}${T("poly", "<span class=\"lg\">Room: corners</span><span class=\"sm\">Corner room</span>")}</span>
+    el.innerHTML = `<span class="seg" role="group" aria-label="Tool">${T("select", "<span class=\"tl\">Select / move</span><span class=\"ts\">Select</span>")}${T("rect", "<span class=\"tl\">Room: rectangle</span><span class=\"ts\">Rect room</span>")}${T("poly", "<span class=\"tl\">Room: corners</span><span class=\"ts\">Corner room</span>")}</span>
       <details class="addm" id="addm"><summary>＋ Add</summary><div class="addp">${Object.entries(ADD_LABEL).map(([k, l]) => { const kd = KINDS[(ADDS[k] || {}).kind || k]; return `<button type="button" data-add="${k}"><i style="background:${kd.fill}"></i>${l}</button>`; }).join("")}</div></details>
       <span class="grow"></span><button class="btn sec" id="sUndo" title="Undo (Ctrl+Z)" ${S.undo.length ? "" : "disabled"}>↶ Undo</button><span class="seg"><button id="zOut" aria-label="Zoom out">−</button><button id="zIn" aria-label="Zoom in">＋</button><button id="zFit">Fit</button></span>
       ${t === "poly" ? `<span class="row" style="width:100%"><button class="btn" id="pFin" ${S.draft.length >= 3 ? "" : "disabled"}>Finish room</button><button class="btn sec" id="pUndo" ${S.draft.length ? "" : "disabled"}>Undo corner</button><button class="btn sec" id="pCancel">Cancel</button></span>` : ""}`;
@@ -179,11 +184,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#zIn").onclick = () => zoom(1.25); $("#zOut").onclick = () => zoom(0.8); $("#zFit").onclick = () => { fitView(); fitFront(); draw(); }; $("#sUndo").onclick = () => requireAuth(undo);
     const fin = $("#pFin"); if (fin) fin.onclick = finishPoly; const un = $("#pUndo"); if (un) un.onclick = () => { S.draft.pop(); paintBar(); draw(); }; const ca = $("#pCancel"); if (ca) ca.onclick = () => { S.draft = []; S.tool = "select"; paintBar(); draw(); };
   }
-  async function addUnit(key, from) {
+  async function addUnit(key, from, name) {
     await flushSave(); const cv = $("#sCv"), sp = ADDS[key] || {}, kind = from ? from.kind : (sp.kind || key), k = KINDS[kind], label = sp.label || k.label, n = S.units.filter(x => x.name.startsWith(label)).length + 1;
-    const u = from ? { ...from, id: null, name: from.name + " copy" } : { kind, name: label + " " + n, w: sp.w ?? k.w, d: sp.d ?? k.d, h: sp.h ?? k.h, rot: 0, levels: sp.levels ?? k.levels, color: null, elev: sp.elev ?? 0 };
+    const u = from ? { ...from, id: null, name: name || from.name + " copy" } : { kind, name: label + " " + n, w: sp.w ?? k.w, d: sp.d ?? k.d, h: sp.h ?? k.h, rot: 0, levels: sp.levels ?? k.levels, color: null, elev: sp.elev ?? 0 };
     if (from && from.parent_id) { /* a copy of a box stays on the same rack */ }
-    else if (from) { const f = fp(from); u.x = snapTo(from.x + (f.w < f.d ? f.w : 0) + 0.05, 0.05); u.z = snapTo(from.z + (f.w < f.d ? 0 : f.d) + 0.05, 0.05); }   // copies go right next to the original
+    else if (from) { const f = fp(from); if (f.w < f.d) { u.x = snapTo(from.x + f.w + 0.05, 0.05); u.z = from.z; } else { u.x = from.x; u.z = snapTo(from.z + f.d + 0.05, 0.05); } }   // copies line up next to the original: beside a tall one, below a wide one
     else { u.x = snapTo(S.v.ox + cv.width / 2 / S.v.ppm - u.w / 2, 0.05); u.z = snapTo(S.v.oz + cv.height / 2 / S.v.ppm - u.d / 2, 0.05); }
     if (!from && key === "wall" && !snapToWall(u, true)) toast("Drag it against a wall, then press Snap to wall.");
     try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); } catch (e) {}
@@ -261,9 +266,12 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     g.lineWidth = 3; g.strokeStyle = "#F2C200"; g.fillStyle = "rgba(242,194,0,.2)";
     if (S.rect) { const x = Math.min(S.rect.x0, S.rect.x1), z = Math.min(S.rect.z0, S.rect.z1), w = Math.abs(S.rect.x1 - S.rect.x0), d = Math.abs(S.rect.z1 - S.rect.z0); g.fillRect(sx(x), sy(z), w * p, d * p); g.strokeRect(sx(x), sy(z), w * p, d * p); dimLabel(g, r2(w) + " m", sx(x + w / 2), sy(z) - 12, false); dimLabel(g, r2(d) + " m", sx(x + w) + 12, sy(z + d / 2), true); }
     if (S.draft.length) { g.beginPath(); S.draft.forEach((q, i) => i ? g.lineTo(sx(q[0]), sy(q[1])) : g.moveTo(sx(q[0]), sy(q[1]))); if (S.hover) g.lineTo(sx(S.hover[0]), sy(S.hover[1])); g.stroke(); S.draft.forEach((q, i) => { g.fillStyle = i === 0 ? "#2E7D4F" : "#F2C200"; g.beginPath(); g.arc(sx(q[0]), sy(q[1]), i === 0 ? 7 : 5, 0, 7); g.fill(); }); edgeLengths(g, S.hover ? [...S.draft, S.hover] : S.draft, false); }
+    g.save(); g.font = "700 11px sans-serif"; g.textBaseline = "middle"; g.textAlign = "center"; g.fillStyle = "rgba(20,35,43,.55)";
+    const tag = (t, x, y, rot) => { g.save(); g.translate(x, y); if (rot) g.rotate(rot); const w = g.measureText(t).width + 12; g.fillStyle = "rgba(238,241,242,.9)"; g.fillRect(-w / 2, -8, w, 16); g.fillStyle = "rgba(20,35,43,.6)"; g.fillText(t, 0, 1); g.restore(); };
+    tag("BACK", cv.width / 2, 22); tag("FRONT", cv.width / 2, cv.height - 10); tag("LEFT", 10, cv.height / 2, -Math.PI / 2); tag("RIGHT", cv.width - 10, cv.height / 2, Math.PI / 2); g.restore();
     drawFront(); paintInfo();
     const hint = $("#sHint"); if (hint) hint.textContent = S.tool === "rect" ? "Drag from one corner of the room to the opposite corner." : S.tool === "poly" ? "Click each corner of the room in order. Click the green first corner (or Finish room) to close it." : !state.user ? "Sign in (top right) to change things. You can still look around and pick things."
-      : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+D copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
+      : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
   }
   /* snapping: edges of a moving or resizing unit stick to other units' edges and to walls */
   function snapLines(skipId) {
@@ -343,7 +351,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   /* ====================================================== Front view (side-on) ======================================================
      The same space seen from one edge of the plan. Across is the floor line, up is height, so dragging here moves a unit sideways and up or down. */
-  const VIEWS = { S: { label: "Bottom", arrow: "↑", axis: "x", sign: 1, looking: "up" }, N: { label: "Top", arrow: "↓", axis: "x", sign: -1, looking: "down" }, W: { label: "Left", arrow: "→", axis: "z", sign: 1, looking: "right" }, E: { label: "Right", arrow: "←", axis: "z", sign: -1, looking: "left" } };
+  const VIEWS = { S: { label: "Front", edge: "bottom edge", arrow: "↑", axis: "x", sign: 1, looking: "up" }, N: { label: "Back", edge: "top edge", arrow: "↓", axis: "x", sign: -1, looking: "down" }, W: { label: "Left", edge: "left edge", arrow: "→", axis: "z", sign: 1, looking: "right" }, E: { label: "Right", edge: "right edge", arrow: "←", axis: "z", sign: -1, looking: "left" } };
   const EV = () => VIEWS[S.eview] || VIEWS.S;
   const aext = f => EV().axis === "x" ? [f.x, f.x + f.w] : [f.z, f.z + f.d];                  // a footprint's span along the way we are looking across, in plan metres
   const hext = (a0, a1) => EV().sign > 0 ? [a0, a1] : [-a1, -a0];                              // the same span as it runs left to right on screen
@@ -360,9 +368,12 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   function paintSeg() {
     const el = $("#eSeg"); if (!el) return; const V = EV();
-    el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.label.toLowerCase()} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
+    el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.edge} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
     el.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.eview = b.dataset.view; try { localStorage.setItem("sp_view", S.eview); } catch (e) {} paintSeg(); fitFront(); drawFront(); });
-    const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " of the plan, looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
+    const sz = $("#eSz"); if (sz) { sz.innerHTML = ["S", "M", "L"].map(k => `<button data-sz="${k}" aria-pressed="${S.esize === k}" aria-label="${({ S: "Small", M: "Medium", L: "Large" })[k]} view">${k}</button>`).join(""); sz.querySelectorAll("[data-sz]").forEach(b => b.onclick = () => { S.esize = b.dataset.sz; try { localStorage.setItem("sp_esize", S.esize); } catch (e) {} sizeCanvas(); fitFront(); draw(); paintSeg(); }); }
+    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "fit") { fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
+    const tt = $("#eTitle"); if (tt) tt.textContent = V.label + " view";
+    const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " (" + V.edge + " of the plan), looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
   }
   function ehandles(u) {
     const V = EV(), e = aext(fp(u)), hh = hext(e[0], e[1]), L = esx(hh[0]), R = esx(hh[1]), xm = (L + R) / 2, yT = esy((u.elev || 0) + u.h), yB = esy(u.elev || 0), ym = (yT + yB) / 2;
@@ -469,11 +480,19 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     cv.onpointerup = up; cv.onpointercancel = up;
     cv.onwheel = e => { e.preventDefault(); const w = pt(e), Ev = E(), f = e.deltaY < 0 ? 1.12 : 0.89; Ev.ppm = clamp(Ev.ppm * f, 10, 400); Ev.h0 = w.h - w.px / Ev.ppm; Ev.base = w.py + w.y * Ev.ppm; drawFront(); };
   }
+  async function pasteClip() {   // each paste goes next to the one before, so you can lay a row of copies
+    const c = S.clip; if (c.parent_id && !unit(c.parent_id)) return toast("The rack it was on is gone.");
+    const last = S.clipLast && unit(S.clipLast), base = c.name.replace(/ copy( \d+)?$/, ""); S.pasteN = last ? S.pasteN + 1 : 1;
+    await addUnit(c.kind, last || c, base + " copy" + (S.pasteN > 1 ? " " + S.pasteN : ""));
+    S.clipLast = S.sel && S.sel.kind === "unit" ? S.sel.id : null;
+  }
   function onKey(e) {
     if (!S.view || $("#dlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const ctrl = e.ctrlKey || e.metaKey, u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (state.user) undo(); return; }
     if (e.key === "Escape") { flushSave(); S.sel = null; S.draft = []; S.rect = null; paintBar(); paintProps(); draw(); return; }
+    if (ctrl && e.key.toLowerCase() === "c" && u) { e.preventDefault(); S.clip = { ...u }; S.clipLast = null; S.pasteN = 0; toast("Copied " + u.name + ". Press Ctrl+V to paste a copy."); return; }
+    if (ctrl && e.key.toLowerCase() === "v" && S.clip) { e.preventDefault(); if (!state.user) { toast("Sign in to paste."); return; } pasteClip(); return; }
     if (!u || !state.user) return;
     if (parentOf(u)) { if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); } return; }
     const step = e.shiftKey ? 0.5 : 0.05, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];

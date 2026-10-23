@@ -806,7 +806,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (u && S.multi.length > 1) return groupProps(el, group());
     if (!u) { el.innerHTML = `<h2>Your space</h2><p class="hint">${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"} · ${tops().length} unit${tops().length === 1 ? "" : "s"}</p>
       <ol style="padding-left:20px;display:grid;gap:6px;margin:0 0 10px"><li>Draw a room with <strong>Room: rectangle</strong> or <strong>Room: corners</strong>.</li><li>Press <strong>＋ Add</strong> for a shelf, cabinet, wall cabinet, drawers, workbench, PC desk or rack.</li><li>Drag it in the <strong>top view</strong> to place it on the floor, and in the <strong>front view</strong> to set how high it is.</li></ol>
-      <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>`; return; }
+      <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>${tops().length ? `<button type="button" class="btn sec" id="qrAll">Print QR labels for every place</button>` : ""}`; if ($("#qrAll")) $("#qrAll").onclick = () => qrLabels(S.units.map(x => x.id)); return; }
     if (u.kind === "box" && parentOf(u)) return boxProps(u, el);
     const its = contents(u), rm = roomOf(u), col = colorOf(u), ro = !state.user, desk = isTable(u), rack = u.kind === "rack";
     const types = Object.entries(KINDS).filter(([k]) => k !== "box").map(([k, v]) => `<option value="${k}" ${k === u.kind ? "selected" : ""}>${v.label}</option>`).join("");
@@ -840,7 +840,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       ${clash.length ? `<p class="status-line err" style="margin:6px 0">Overlaps ${esc(clash.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""}
       ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${onTable}${desk ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${underCab}${underDesk}${boxesHtml}
       ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`)}
-      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
+      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn sec" id="uQr">QR label</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
       ${its.length ? `<p class="hint" style="margin-top:10px">Stored here: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing stored here yet. Place items under Setup, Place items.</p>`}`;
     bindSecs(el);
@@ -879,7 +879,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if ($("#bxAdd")) $("#bxAdd").onclick = () => requireAuth(() => addBox(u, Number($("#bxL").value)));
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.sel = { kind: "unit", id: b.dataset.box }; paintProps(); draw(); });
     $("#uDup").onclick = () => requireAuth(() => addUnit(u.kind, u));
-    $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); };
+    $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); }; if ($("#uQr")) $("#uQr").onclick = async () => { await flushSave(); qrLabels([u.id]); };
     $("#uDel").onclick = () => requireAuth(() => removeUnit(u));
   }
   function groupProps(el, gs) {
@@ -939,7 +939,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         ${over ? `<p class="status-line err">This box does not fit where it sits (too wide, deep or tall for the level, or for the box under it).</p>` : ""}`)}
       ${sec("bxstack", "Stack", `${stacked.length ? stacked.map(c => `<button type="button" class="bxr" data-box="${c.id}"><span>↑ ${esc(c.name)}</span><span class="hint" style="margin:0">${cm(c.w)}×${cm(c.d)}×${cm(c.h)} cm</span></button>`).join("") : `<p class="hint" style="margin:0 0 8px">Nothing stacked on this box.</p>`}<button type="button" class="btn sec" id="bxStack">Stack another box on top</button>`)}
       ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`)}
-      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="bxBack">Back to ${esc(p.name)}</button><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div></fieldset>
+      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="bxBack">Back to ${esc(p.name)}</button><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn sec" id="uQr">QR label</button><button type="button" class="btn danger" id="uDel">Remove</button></div></fieldset>
       ${its.length ? `<p class="hint" style="margin-top:10px">Inside: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing inside yet. Open Find and press Add on this box.</p>`}`;
     bindSecs(el);
     const change = (fn, now) => { if (!state.user) return; burstSnap(u); fn(); draw(); if (now) { clearTimeout(S.saveT); S.pending = u; flushSave(); } else scheduleSave(u); };
@@ -964,7 +964,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#uColDef").onclick = () => { change(() => { u.color = null; }, true); paintProps(); };
     $("#bxBack").onclick = () => { flushSave(); S.sel = { kind: "unit", id: p.id }; paintProps(); draw(); };
     $("#uDup").onclick = () => requireAuth(() => addUnit("box", u));
-    $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); };
+    $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); }; if ($("#uQr")) $("#uQr").onclick = async () => { await flushSave(); qrLabels([u.id]); };
     $("#uDel").onclick = () => requireAuth(async () => { const back = p.id; await removeUnit(u); if (!unit(u.id)) { S.sel = { kind: "unit", id: back }; paintProps(); draw(); } });
   }
   function roomDialog(r, pts) {

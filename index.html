@@ -55,7 +55,7 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .subtabs button{background:none;border:1px solid #5C7380;color:#C7D3D8;padding:4px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;font-size:14px}
 .subtabs button[aria-current=page]{background:#fff;border-color:#fff;color:var(--ink);font-weight:600}
 #pgseg:empty{display:none}.pgseg{max-width:1100px;margin:var(--s3) auto 0;padding:0 var(--s4);display:flex;gap:0}.pgseg button{background:#fff;border:2px solid var(--ink);margin-left:-2px;padding:6px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}.pgseg button:first-child{margin-left:0}.pgseg button[aria-selected=true]{background:var(--ink);color:#fff}
-.bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
+.bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq[hidden]{display:none}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
 .subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
 .linkname{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(127,127,127,.45);text-underline-offset:3px}
 .linkname:hover{text-decoration-color:currentColor}
@@ -1199,7 +1199,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "43";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "44";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1322,7 +1322,7 @@ function afterLoan() { if (state.loc && unitById(state.loc)) locSheet(state.loc)
 async function returnLoan(id) {
   try { await guard(rpcAuth("toolscale_loan_return", { p_loan: id })); await refreshAll(); toast("Returned. Thank you."); afterLoan(); } catch (e) {}
 }
-const DURS = [["4 hours", 4 * 3600e3], ["1 day", 86400e3], ["3 days", 3 * 86400e3], ["1 week", 7 * 86400e3], ["2 weeks", 14 * 86400e3], ["1 month", 30 * 86400e3]];
+const DURS = [["End of today", "eod"], ["4 hours", 4 * 3600e3], ["1 day", 86400e3], ["3 days", 3 * 86400e3], ["1 week", 7 * 86400e3], ["2 weeks", 14 * 86400e3], ["1 month", 30 * 86400e3]];
 function takeSheet(kind, id) {
   const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const d = $("#dlg"), con = kind === "consumable";
   if (!con && loanFor(kind, id)) { toast("Already out with " + loanFor(kind, id).person + "."); return; }
@@ -1330,7 +1330,8 @@ function takeSheet(kind, id) {
     ${con ? `<div><div class="hint" style="margin:0 0 6px">How many? (${it.count_on_hand} on hand)</div><div class="stepq"><button type="button" id="tk_m" aria-label="One less">−</button><input id="tk_q" type="number" min="1" max="${Math.max(1, it.count_on_hand)}" step="1" value="1" aria-label="How many"><button type="button" id="tk_p" aria-label="One more">＋</button></div></div>` : ""}
     <div><div style="font-weight:700;margin-bottom:8px">Will you bring ${con ? "any" : "it"} back?</div>
       <div class="bigtwo"><button type="button" data-tk="keep">${con ? "No<small>it will be used up</small>" : "No<small>I am keeping it</small>"}</button><button type="button" data-tk="back">Yes<small>I will return ${con ? "what is left" : "it"}</small></button></div></div>
-    <div id="tkDur" hidden><div style="font-weight:700;margin-bottom:8px">Back in how long?</div><div class="durs">${DURS.map(([l], i) => `<button type="button" data-dur="${i}">${l}</button>`).join("")}</div></div>
+    <div id="tkDur" hidden><div style="font-weight:700;margin-bottom:8px">Back in how long?</div><div class="durs">${DURS.map(([l], i) => `<button type="button" data-dur="${i}">${l}</button>`).join("")}<button type="button" data-dur="other">Other…</button></div>
+      <div id="tkOther" class="stepq" style="margin-top:10px" hidden><input id="tk_n" type="number" min="1" max="999" step="1" value="2" aria-label="How many" style="width:80px"><select id="tk_u" class="sel" style="width:auto" aria-label="Unit"><option value="3600000">hours</option><option value="86400000" selected>days</option><option value="604800000">weeks</option></select><button type="button" id="tkOtherGo" class="btn" style="background:var(--ink);color:#fff;width:auto;padding:0 20px;height:44px;font-size:16px;white-space:nowrap">Take it</button></div></div>
   </div><div class="dlg-f"><button type="button" class="btn sec" id="tkBack">Back</button></div></form>`;
   if (!d.open) d.showModal();
   const q = () => clamp(Math.round(Number($("#tk_q")?.value) || 1), 1, Math.max(1, it.count_on_hand));
@@ -1341,7 +1342,10 @@ function takeSheet(kind, id) {
   });
   d.querySelector('[data-tk=keep]').onclick = () => go(con ? "Used" : "Kept", null);
   d.querySelector('[data-tk=back]').onclick = () => { $("#tkDur").hidden = false; d.querySelector('[data-tk=back]').style.background = "var(--ink)"; d.querySelector('[data-tk=back]').style.color = "#fff"; $("#tkDur").scrollIntoView({ block: "nearest" }); };
-  d.querySelectorAll("[data-dur]").forEach(b => b.onclick = () => go("Borrowed", new Date(Date.now() + DURS[Number(b.dataset.dur)][1]).toISOString()));
+  const dueAt = v => v === "eod" ? (() => { const x = new Date(); x.setHours(23, 59, 0, 0); return x; })() : new Date(Date.now() + v);
+  d.querySelectorAll("[data-dur]").forEach(b => b.onclick = () => { if (b.dataset.dur === "other") { $("#tkOther").hidden = false; $("#tk_n").focus(); $("#tk_n").select(); return; } go("Borrowed", dueAt(DURS[Number(b.dataset.dur)][1]).toISOString()); });
+  $("#tkOtherGo").onclick = () => { const n = Number($("#tk_n").value); if (!(n >= 1)) { $("#tk_n").focus(); return; } go("Borrowed", new Date(Date.now() + n * Number($("#tk_u").value)).toISOString()); };
+  $("#tk_n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#tkOtherGo").click(); } };
 }
 /* a place: shelf, cabinet, table or box, with everything in it. This is the page a QR code opens. */
 function placedAt(uid) { return allEntries().filter(x => x.it.unit_id === uid); }

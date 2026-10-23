@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, link: (() => { try { return localStorage.getItem("sp_link") !== "0"; } catch (e) { return true; } })(), esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.cols = r.cols == null ? null : Number(r.cols); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); r.at_left = r.at_left == null ? null : Number(r.at_left); r.lvh = Array.isArray(r.lvh) ? r.lvh.map(Number) : null; if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -226,7 +226,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       <div class="sptool" id="sBar"></div>
       <div class="split" id="spSplit"><div class="spcol">
         <div class="panel vw vtop"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
-        <div class="panel vw vfront"><div class="vwh"><strong id="eTitle">Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span><span class="seg" id="eSz" role="group" aria-label="Size of this view"></span><span class="seg" id="eZ" role="group" aria-label="Zoom this view"><button data-ez="out" aria-label="Zoom out">−</button><button data-ez="in" aria-label="Zoom in">＋</button><button data-ez="fit">Fit</button></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
+        <div class="panel vw vfront"><div class="vwh"><strong id="eTitle">Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span><span class="seg" id="eSz" role="group" aria-label="Size of this view"></span><span class="seg" id="eZ" role="group" aria-label="Zoom this view"><button data-ez="out" aria-label="Zoom out">−</button><button data-ez="in" aria-label="Zoom in">＋</button><button data-ez="fit">Fit</button><button data-ez="link" id="eLink" title="Keep the plan and this view on the same scale and position" aria-pressed="true">Linked</button></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
         <div class="panel spprops" id="sProps"></div></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
     sizeCanvas(); fitView(); fitFront(); paintBar(); paintSeg(); paintProps(); draw(); bindCanvas(); bindFront();
@@ -301,7 +301,20 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function edgeLengths(g, pts, closed) {
     for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) { const a = pts[i], b = pts[(i + 1) % pts.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L * S.v.ppm < 40) continue; dimLabel(g, r2(L) + " m", (sx(a[0]) + sx(b[0])) / 2, (sy(a[1]) + sy(b[1])) / 2, false); }
   }
+  /* the plan and the front view share one scale and one left-right position, so a unit sits straight above its front view. Whichever was moved last leads. */
+  function linkSync() {
+    const cv = $("#sCv"), ec = $("#eCv"); if (!cv || !ec || !S.ev || !S.v || !S.link) { S.lk = null; return null; }
+    const V = EV(), P = S.v, E = S.ev, x = V.axis === "x", po = () => x ? P.ox : P.oz, L = S.lk; let led = null;
+    const planMoved = !L || P.ppm !== L.pp || po() !== L.po, frontMoved = !!L && (E.ppm !== L.fp || E.h0 !== L.fh);
+    if (frontMoved && !planMoved) {
+      P.ppm = clamp(E.ppm, 8, 400); const a = V.sign * (E.h0 + ec.width / 2 / E.ppm), span = (x ? cv.width : cv.height) / 2 / P.ppm; if (x) P.ox = a - span; else P.oz = a - span; led = "plan";
+    } else if (planMoved) {
+      E.ppm = clamp(P.ppm, 10, 400); const a = (x ? P.ox + cv.width / 2 / P.ppm : P.oz + cv.height / 2 / P.ppm); E.h0 = V.sign * a - ec.width / 2 / E.ppm;
+    }
+    S.lk = { pp: P.ppm, po: po(), fp: E.ppm, fh: E.h0 }; return led;
+  }
   function draw() {
+    linkSync();
     const cv = $("#sCv"); if (!cv) return; const g = cv.getContext("2d"), p = S.v.ppm; g.clearRect(0, 0, cv.width, cv.height); g.fillStyle = "#EEF1F2"; g.fillRect(0, 0, cv.width, cv.height);
     const gx0 = Math.floor(S.v.ox), gx1 = Math.ceil(S.v.ox + cv.width / p), gz0 = Math.floor(S.v.oz), gz1 = Math.ceil(S.v.oz + cv.height / p);
     g.lineWidth = 1; g.font = "11px sans-serif"; g.textBaseline = "top"; g.textAlign = "left"; const labelEvery = p > 50 ? 1 : p > 25 ? 2 : 5;
@@ -487,7 +500,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.edge} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
     el.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.eview = b.dataset.view; try { localStorage.setItem("sp_view", S.eview); } catch (e) {} paintSeg(); fitFront(); drawFront(); });
     const sz = $("#eSz"); if (sz) { sz.innerHTML = ["S", "M", "L"].map(k => `<button data-sz="${k}" aria-pressed="${S.esize === k}" aria-label="${({ S: "Small", M: "Medium", L: "Large" })[k]} view">${k}</button>`).join(""); sz.querySelectorAll("[data-sz]").forEach(b => b.onclick = () => { S.esize = b.dataset.sz; try { localStorage.setItem("sp_esize", S.esize); } catch (e) {} sizeCanvas(); fitFront(); draw(); paintSeg(); }); }
-    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "fit") { fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
+    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "link") { S.link = !S.link; try { localStorage.setItem("sp_link", S.link ? "1" : "0"); } catch (e) {} S.lk = null; paintSeg(); if (S.link) draw(); return; } if (b.dataset.ez === "fit") { fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
+    const lk = $("#eLink"); if (lk) { lk.setAttribute("aria-pressed", String(!!S.link)); lk.textContent = S.link ? "Linked" : "Link"; }
     const tt = $("#eTitle"); if (tt) tt.textContent = V.label + " view";
     const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " (" + V.edge + " of the plan), looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
   }
@@ -532,6 +546,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     }
   }
   function drawFront() {
+    if (linkSync() === "plan") { draw(); return; }
     const cv = $("#eCv"); if (!cv || !S.ev) return; const g = cv.getContext("2d"), E = S.ev, V = EV(), W = cv.width, H = cv.height;
     g.clearRect(0, 0, W, H); g.fillStyle = "#EEF1F2"; g.fillRect(0, 0, W, H); g.font = "11px sans-serif"; g.textAlign = "left"; g.textBaseline = "top"; g.lineWidth = 1;
     const step = E.ppm > 50 ? 1 : E.ppm > 25 ? 2 : 5, hl = E.h0, hr = E.h0 + W / E.ppm;
@@ -1006,12 +1021,15 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const c = centroid(r.points), lb = label(r.name, 1.5); lb.position.set(c[0], r.h + 0.3, c[1]); root.add(lb);
     }
     const edgeM = new T.LineBasicMaterial({ color: 0xE6EEF1 });
+    k.own = [];   // every drawn thing with the cabinet it belongs to, so the rest can fade out when one item is being found
+    const ownOf = id => { if (String(id).startsWith("dm:")) id = String(id).slice(3); if (String(id).startsWith("a:")) { const a = (state.assets || []).find(x => "a:" + x.id === id), t = a && a.unit_id && unit(a.unit_id); return t ? rootOf(t).id : null; } const u = unit(id); return u ? rootOf(u).id : null; };
+    k.ownOf = ownOf; const edgeG = new T.LineBasicMaterial({ color: 0x9FB0B8, transparent: true, opacity: 0.18 }); k.edgeM = edgeM; k.edgeG = edgeG;
     const addBox3 = (u, m, cx, cy, cz, wx, hy, wz, pick) => {
       const o = new T.Mesh(B(wx, hy, wz), m); o.position.set(cx, cy, cz); root.add(o);
       if (pick !== false) { o.userData.unit = u.id; k.pick.push(o); }
-      const e = new T.LineSegments(new T.EdgesGeometry(B(wx, hy, wz)), edgeM); e.position.copy(o.position); root.add(e); return o;
+      const e = new T.LineSegments(new T.EdgesGeometry(B(wx, hy, wz)), edgeM); e.position.copy(o.position); root.add(e); k.own.push({ own: ownOf(u.id), edge: e }); return o;
     };
-    k.mats = {};
+    k.mats = {}; k.fo = undefined;
     const matOf = u => { const m = new T.MeshStandardMaterial({ color: u.color ? parseInt(u.color.slice(1), 16) : KINDS[u.kind]?.c3 || 0x3A87AA, roughness: .6, metalness: .05, emissive: 0x000000 }); k.mats[u.id] = m; return m; };
     for (const u of tops()) {
       const f = fp(u), cx = f.x + f.w / 2, cz = f.z + f.d / 2, e0 = u.elev || 0, D = DIR[u.rot] || DIR[0], alongX = D.R[0] !== 0, m = matOf(u);
@@ -1020,14 +1038,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         const bench = u.kind === "bench", t = bench ? 0.05 : 0.035, lg = bench ? 0.07 : 0.05, ins = bench ? 0.05 : 0.04; addBox3(u, m, cx, e0 + u.h - t / 2, cz, f.w, t, f.d);
         for (const sr of [-1, 1]) for (const sf of [-1, 1]) { const px = cx + D.R[0] * sr * (u.w / 2 - ins) + D.F[0] * sf * (u.d / 2 - ins), pz = cz + D.R[1] * sr * (u.w / 2 - ins) + D.F[1] * sf * (u.d / 2 - ins); addBox3(u, m, px, e0 + (u.h - t) / 2, pz, lg, u.h - t, lg); }
         if (!bench) {
-        const dm = new T.MeshStandardMaterial({ color: 0x1b2328, roughness: .5 }), top = e0 + u.h;   // a monitor and keyboard so it reads as a PC desk
+        const dm = new T.MeshStandardMaterial({ color: 0x1b2328, roughness: .5 }), top = e0 + u.h; k.mats["dm:" + u.id] = dm;   // a monitor and keyboard so it reads as a PC desk
         const [mw, md] = wd(Math.min(0.55, u.w * 0.5), 0.04); addBox3(u, dm, cx + D.F[0] * (u.d / 2 - 0.14), top + 0.2, cz + D.F[1] * (u.d / 2 - 0.14), mw, 0.32, md, false);
         const [kw, kd] = wd(Math.min(0.42, u.w * 0.4), 0.14); addBox3(u, dm, cx - D.F[0] * 0.08, top + 0.01, cz - D.F[1] * 0.08, kw, 0.02, kd, false);
         }
         for (const e of assetLayout(u)) {   // each asset is a box standing on the table top
           const am = new T.MeshStandardMaterial({ color: parseInt(assetCol(e.a).slice(1), 16), roughness: .55, metalness: .1, emissive: 0x000000 }); k.mats["a:" + e.a.id] = am;
           addBox3({ id: "a:" + e.a.id }, am, e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
-          const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al);
+          const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al); k.own.push({ own: u.id, label: al });
         }
       } else if (u.kind === "rack") {
         const T3 = 0.03, lg = 0.04;
@@ -1051,12 +1069,18 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
           root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(segs), new T.LineBasicMaterial({ color: u.color && light(u.color) ? 0x14232B : 0xE6EEF1 })));
         }
       }
-      const lt = label(u.name, 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : 0.25), cz); root.add(lt);
+      const lt = label(u.name, 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : 0.25), cz); root.add(lt); k.own.push({ own: u.id, label: lt });
     }
     const mk = new T.Mesh(new T.ConeGeometry(0.16, 0.4, 16), new T.MeshBasicMaterial({ color: 0xF2C200 })); mk.rotation.x = Math.PI; mk.visible = false; root.add(mk); k.marker = mk;
   }
   function pulse(ts) {
     const k = S.t, p = 0.5 + 0.5 * Math.sin(ts / 240);
+    const fx = S.focusItem && allItems().find(x => x.kind + ":" + x.it.id === S.focusItem), fo = fx && fx.it.unit_id && k.ownOf ? k.ownOf(fx.it.unit_id) : null;   // finding an item: only its cabinet keeps its colour
+    if (k.fo !== (fo || null)) {
+      k.fo = fo || null;
+      for (const [id, m] of Object.entries(k.mats)) { const ghost = !!fo && k.ownOf(id) !== fo; m.transparent = ghost; m.opacity = ghost ? 0.1 : 1; m.depthWrite = !ghost; m.needsUpdate = true; }
+      for (const o of k.own) { const ghost = !!fo && o.own !== fo; if (o.edge) o.edge.material = ghost ? k.edgeG : k.edgeM; if (o.label) o.label.visible = !ghost; }
+    }
     for (const [uid, m] of Object.entries(k.mats)) { const on = S.hl === uid; m.emissive.setHex(on ? 0x6B5400 : 0x000000); m.emissiveIntensity = on ? 0.5 + p : 0; }
     const ae = S.hl && String(S.hl).startsWith("a:") ? assetEntry(String(S.hl).slice(2)) : null; if (ae && k.marker) { k.marker.visible = true; k.marker.position.set(ae.cx, ae.y + ae.h + 0.45 + 0.1 * p, ae.cz); return; }
     const u = S.hl && unit(S.hl); if (u && k.marker) { const a = anchor(u); k.marker.visible = true; k.marker.position.set(a.x, a.y1 + (u.parent_id ? 0.45 : 0.75) + 0.15 * p, a.z); } else if (k.marker) k.marker.visible = false;

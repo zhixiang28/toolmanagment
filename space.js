@@ -25,6 +25,9 @@
   /* which way is "right along the front" (R) and "towards the back" (F) for each way a unit can face */
   const DIR = { 0: { R: [1, 0], F: [0, -1] }, 90: { R: [0, 1], F: [1, 0] }, 180: { R: [-1, 0], F: [0, 1] }, 270: { R: [0, -1], F: [-1, 0] } };
   const isTable = u => u.kind === "desk" || u.kind === "bench";   // a top on legs, with room underneath
+  const vrange = u => isTable(u) ? [(u.elev || 0) + u.h - 0.05, (u.elev || 0) + u.h] : [u.elev || 0, (u.elev || 0) + u.h];   // a table only fills its top: the space under it is free
+  const overlaps2d = (a, b) => { const f = fp(a), g = fp(b); return f.x < g.x + g.w - 0.001 && g.x < f.x + f.w - 0.001 && f.z < g.z + g.d - 0.001 && g.z < f.z + f.d - 0.001; };
+  const clashes = u => tops().filter(o => o.id !== u.id && o.kind !== "rack" && u.kind !== "rack" && overlaps2d(u, o) && vrange(u)[0] < vrange(o)[1] - 0.001 && vrange(o)[0] < vrange(u)[1] - 0.001);
   const parentOf = b => b.parent_id ? unit(b.parent_id) : null;
   const kids = r => S.units.filter(b => b.parent_id === r.id).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
   const tops = () => S.units.filter(u => !parentOf(u));   // boxes on a rack live inside the rack, not on the floor plan
@@ -154,6 +157,14 @@
     else { u.rot = best.plus ? 270 : 90; const g = fp(u); u.x = r2(best.plus ? best.wall : best.wall - g.w); u.z = r2(clamp(cz - g.d / 2, best.lo, Math.max(best.lo, best.hi - g.d))); }
     return true;
   }
+  async function addUnderUnit(top, key) {   // something standing on the floor beneath a wall cabinet, back to the same wall
+    await flushSave(); const sp = ADDS[key] || {}, kind = sp.kind || key, k = KINDS[kind], gap = (top.elev || 0) - 0.05;
+    if (gap < 0.2) return toast("Raise the cabinet first. There is less than 20 cm under it.");
+    const h = Math.min(sp.h ?? k.h, gap), D = DIR[top.rot] || DIR[0], f = fp(top), cx = f.x + f.w / 2, cz = f.z + f.d / 2, w = kind === "drawers" ? k.w : Math.max(0.4, top.w), d = Math.min(sp.d ?? k.d, Math.max(top.d, kind === "bench" ? 0.7 : top.d));
+    const u = { kind, name: k.label + " under " + top.name, w, d, h: r2(h), rot: top.rot, levels: kind === "drawers" ? Math.max(1, Math.round(k.levels * h / k.h)) : k.levels, color: null, elev: 0 };
+    const off = (top.d - u.d) / 2, g = fp(u); u.x = r2(cx + D.F[0] * off - g.w / 2); u.z = r2(cz + D.F[1] * off - g.d / 2);
+    try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); toast(h < (sp.h ?? k.h) ? "Added underneath, made " + cm(h) + " cm high to fit." : "Added underneath."); } catch (e) {}
+  }
   async function addUnderDesk(desk) {   // a cabinet tucked under the table, at the right-hand end, facing the same way
     await flushSave(); const f = fp(desk), D = DIR[desk.rot] || DIR[0], cx = f.x + f.w / 2, cz = f.z + f.d / 2, off = desk.w / 2 - 0.5 / 2 - 0.05;
     const u = { kind: "cabinet", name: "Cabinet under " + desk.name, w: 0.5, d: Math.min(0.5, Math.max(0.2, desk.d - 0.1)), h: Math.max(0.2, Math.min(0.7, desk.h - 0.05)), rot: desk.rot, levels: 2, color: null, elev: 0 };
@@ -189,7 +200,7 @@
     for (const u of order) {
       const f = fp(u), x = sx(f.x), y = sy(f.z), w = f.w * p, h = f.d * p, sel = S.sel && S.sel.kind === "unit" && S.sel.id === u.id, n = contents(u).length, col = colorOf(u), over = raised(u), lt = over ? true : light(col);
       if (sel) selUnit = u;
-      g.fillStyle = col; g.globalAlpha = over ? .5 : .94; g.fillRect(x, y, w, h); g.globalAlpha = 1; g.strokeStyle = sel ? "#F2C200" : "#14232B"; g.lineWidth = sel ? 4 : 1.5; if (over && !sel) g.setLineDash([7, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]);
+      g.fillStyle = col; g.globalAlpha = over ? .5 : .94; g.fillRect(x, y, w, h); g.globalAlpha = 1; const bad = clashes(u).length > 0; g.strokeStyle = sel ? "#F2C200" : bad ? "#B83A26" : "#14232B"; g.lineWidth = sel ? 4 : bad ? 3 : 1.5; if (over && !sel) g.setLineDash([7, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]);
       g.strokeStyle = lt ? "#14232B" : "#fff"; g.lineWidth = 3; g.beginPath();   // the front edge
       if (u.rot === 0) { g.moveTo(x + 3, y + h - 2); g.lineTo(x + w - 3, y + h - 2); } else if (u.rot === 90) { g.moveTo(x + 2, y + 3); g.lineTo(x + 2, y + h - 3); } else if (u.rot === 180) { g.moveTo(x + 3, y + 2); g.lineTo(x + w - 3, y + 2); } else { g.moveTo(x + w - 2, y + 3); g.lineTo(x + w - 2, y + h - 3); } g.stroke();
       g.save(); g.beginPath(); g.rect(x + 3, y + 3, w - 6, h - 6); g.clip(); g.fillStyle = lt ? "#14232B" : "#fff"; g.font = "600 12px sans-serif"; g.textBaseline = "top"; g.fillText(u.name + (u.elev > 0 && !isTable(u) ? " ↑" + cm(u.elev) : ""), x + 6, y + 6); if (n && h > 34) { g.font = "11px sans-serif"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x + 6, y + 21); } g.restore();
@@ -366,6 +377,9 @@
       ${desk ? "" : `<fieldset class="pgrp"><legend>${u.kind === "drawers" ? "Drawers" : "Levels"}</legend>
         <div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div></fieldset>`}
       <fieldset class="pgrp"><legend>Front view</legend><canvas id="uFront" style="width:100%;height:170px;display:block;background:#fff;border:1px solid var(--line)"></canvas></fieldset>
+      ${(() => { const c = clashes(u); return c.length ? `<p class="status-line err" style="margin:8px 0 0">Overlaps ${esc(c.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""; })()}
+      ${!desk && !rack && u.elev > 0 ? `<fieldset class="pgrp"><legend>Under this cabinet</legend><p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
+        <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div></fieldset>` : ""}
       ${desk ? `<fieldset class="pgrp"><legend>Under the ${u.kind === "bench" ? "bench" : "desk"}</legend><p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button></fieldset>` : ""}
       ${rack ? `<fieldset class="pgrp"><legend>Boxes on this rack</legend>
         ${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}"><span>${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it on Setup, Place items.</p>`}
@@ -399,6 +413,7 @@
     $("#uRot").onclick = () => turn(u, 90); $("#uRotL").onclick = () => turn(u, -90);
     $("#uWall").onclick = () => requireAuth(async () => { await flushSave(); if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} paintProps(); draw(); } });
     if ($("#uMount")) $("#uMount").onclick = () => requireAuth(async () => { await flushSave(); const before = { ...u }; if (!u.elev) u.elev = 1.2; if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} } else { Object.assign(u, before); snapUnit(u); u.elev = before.elev || 1.2; try { await saveUnit(u); } catch (e) {} } paintProps(); draw(); });
+    if ($("#uUnderAdd")) $("#uUnderAdd").onclick = () => requireAuth(() => addUnderUnit(u, $("#uUnderKind").value));
     if ($("#uUnder")) $("#uUnder").onclick = () => requireAuth(() => addUnderDesk(u));
     if ($("#bxAdd")) $("#bxAdd").onclick = () => requireAuth(() => addBox(u, Number($("#bxL").value)));
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.sel = { kind: "unit", id: b.dataset.box }; paintProps(); draw(); });

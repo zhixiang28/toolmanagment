@@ -61,6 +61,7 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .linkname:hover{text-decoration-color:currentColor}
 .srch{position:relative;margin-bottom:var(--s5)}
 .srch input[type=search]{font-size:18px;min-height:52px;padding-left:44px;border-color:var(--ink)}
+#s3Box{scroll-margin-top:150px}.findbar{margin-bottom:var(--s4)}.findbar .srch{margin-bottom:0}.findbar .res{margin-top:6px;max-height:300px;overflow:auto}.res li.on{outline:3px solid var(--hivis);outline-offset:-3px}
 .srch svg{position:absolute;left:14px;top:15px;width:22px;height:22px;color:var(--ink-2)}
 .res{list-style:none;margin:var(--s2) 0 0;padding:0;border:1px solid var(--line);background:var(--panel)}
 .res li{display:flex;gap:var(--s3);align-items:center;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -175,7 +176,7 @@ dialog>form{display:flex;flex-direction:column;min-height:0;flex:1}
 .dlg-b{overflow-y:auto;flex:1;min-height:0}
 .dlg-h,.dlg-f{flex:none}
 dialog::backdrop{background:rgba(20,35,43,.6)}
-.dlg-h{padding:var(--s4) var(--s5);background:var(--ink);color:#fff}
+.dlg-h{padding:var(--s4) var(--s5);background:var(--ink);color:#fff;position:relative;padding-right:56px}.dlg-x{position:absolute;top:10px;right:10px;width:40px;height:40px;border:0;background:none;color:#fff;font-size:26px;line-height:1;cursor:pointer}.dlg-x:hover{background:rgba(255,255,255,.12)}
 .dlg-h h2{font-size:28px}
 .dlg-b{padding:var(--s5);display:grid;gap:var(--s4)}
 .dlg-f{padding:var(--s3) var(--s5) var(--s5);display:flex;gap:var(--s3);justify-content:flex-end;flex-wrap:wrap}
@@ -185,13 +186,15 @@ dialog::backdrop{background:rgba(20,35,43,.6)}
 .samples .s{font:600 20px var(--display);background:var(--steel);color:#fff;padding:0 var(--s3)}
 
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:var(--s3) var(--s5);border-left:8px solid var(--hivis);font-weight:600;z-index:20;max-width:90vw}
-.toast[hidden]{display:none}
+.toast[hidden]{display:none}.toast[popover]{inset:auto;left:50%;bottom:20px;margin:0;border:0;border-left:8px solid var(--hivis);overflow:visible}.toast.err{border-left-color:var(--alert)}
+@media (max-width:700px){.toast,.toast[popover]{bottom:76px;width:max-content}}
 .center{max-width:420px;margin:12vh auto;padding:0 var(--s4)}
 .center h1{font-size:48px;margin-bottom:var(--s3)}
 .center form{display:grid;gap:var(--s3);margin-top:var(--s4)}
 code{background:#D9E0E3;padding:0 4px}
 @media (max-width:640px){
   .tablewrap{overflow:visible}
+  .cards4{grid-template-columns:1fr;gap:8px}.acard{display:grid;grid-template-columns:44px 1fr;align-items:center;column-gap:10px;row-gap:6px;padding:10px 12px}.acard .n{font-size:30px;grid-row:span 2}.acard .btn{margin:0;padding:6px 12px;font-size:14px;justify-self:start;grid-column:2}
   table.cards{border:0;background:none}
   table.cards thead{display:none}
   table.cards,table.cards tbody{display:block}
@@ -199,6 +202,7 @@ code{background:#D9E0E3;padding:0 4px}
   table.cards td{display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;padding:4px 0;font-size:15px;text-align:right}
   table.cards td::before{content:attr(data-label);font-weight:600;color:var(--ink-2);text-align:left;flex:none}
   table.cards td:first-child{display:block;text-align:left;font-size:17px;padding-bottom:6px}
+  table.cards td:empty,table.cards td.blank{display:none}
   table.cards td:first-child::before,table.cards td.act::before,table.cards td[data-label=""]::before{display:none}
   table.cards td.act{justify-content:flex-start;flex-wrap:wrap;padding-top:8px}
 }
@@ -237,7 +241,7 @@ code{background:#D9E0E3;padding:0 4px}
 </head>
 <body>
 <div id="app"></div>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" popover="manual" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
@@ -306,7 +310,12 @@ async function installApp() {
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 
 /* ---------- helpers ---------- */
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
+function toast(msg, err) {   // shown above any open dialog (popover top layer), so messages are never hidden behind a sheet
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("err", !!err); t.hidden = false;
+  try { if (t.matches(":popover-open")) t.hidePopover(); t.showPopover(); } catch (e) {}
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; try { t.hidePopover(); } catch (e) {} }, err ? 6500 : 4500);
+}
+const outWord = ts => !ts ? "Out" : ago(ts) === "just now" ? "Out just now" : "Out for " + ago(ts);
 function ago(ts) {
   if (!ts) return ""; const m = Math.max(0, Math.round((Date.now() - new Date(ts)) / 60000));
   if (m < 1) return "just now"; if (m < 60) return m + " min"; const h = Math.floor(m / 60);
@@ -327,7 +336,10 @@ function closeTo(tool) {
   return state.tools.filter(o => o.id !== tool.id && Math.abs(Number(o.weight_g) - Number(tool.weight_g)) <= Number(o.tol_g) + Number(tool.tol_g));
 }
 
-async function guard(p) { try { const r = await p; if (r.error) throw r.error; return r.data; } catch (e) { state.err = e.message || String(e); renderBanner(); throw e; } }
+async function guard(p) {   // a lost connection shows a banner; anything the database refused (for example "Already out with Zhi") shows as a message where you are
+  try { const r = await p; if (r.error) throw r.error; return r.data; }
+  catch (e) { const m = e.message || String(e); if (e.name === "TypeError" || /fetch|network|timed? ?out|load failed/i.test(m)) { state.err = m; renderBanner(); } else toast(m, true); throw e; }
+}
 
 /* ---------- boot ---------- */
 async function boot() {
@@ -443,6 +455,7 @@ function startApp() {
   updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
   $("#dlg").addEventListener("click", onMainClick);
+  new MutationObserver(() => { const h = $("#dlg .dlg-h"); if (h && !h.querySelector(".dlg-x")) { const x = document.createElement("button"); x.type = "button"; x.className = "dlg-x"; x.setAttribute("aria-label", "Close"); x.textContent = "×"; x.onclick = () => $("#dlg").close(); h.appendChild(x); } }).observe($("#dlg"), { childList: true });
   $("#main").addEventListener("change", ev => { const q = ev.target.dataset?.qty; if (q) requireAuth(async () => { try { await guard(rpcAuth("toolscale_reorder_update", { p_id: q, p_qty: Number(ev.target.value || 1), p_dismiss: false })); await refreshAll(); } catch (e) {} }); });
   document.addEventListener("keydown", e => { if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "") && !$("#dlg").open) { e.preventDefault(); if (state.tab !== "home") setTab("home"); setTimeout(() => $("#q")?.focus(), 0); } });
   refreshAll().then(() => { renderTab(); openDeepLink(); });
@@ -566,13 +579,17 @@ const whereText = it => locText(it) || it.slot || it.location || "";
 const onOrder = (kind, id) => state.reorder.find(r => r.kind === kind && r.item_id === id);
 function statusText(kind, it) {
   if (kind === "asset") return `<span class="chip ${it.status === "repair" ? "warn" : it.status === "retired" ? "" : "in"}">${esc(ASSET_STATUS[it.status] || it.status)}</span>`;
-  if (kind === "tool") return it.status === "out" ? `<span class="chip out">Out ${esc(ago(it.taken_at))}</span>` : `<span class="chip in">In</span>`;
+  if (kind === "tool") return it.status === "out" ? `<span class="chip out">${esc(outWord(it.taken_at))}</span>` : `<span class="chip in">In</span>`;
   return `<span class="chip ${lowItem(it) ? "low" : ""}">${it.count_on_hand} on hand${lowItem(it) ? " · low" : ""}</span>`;
 }
 function searchItems(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
   return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.category, it.slot, it.location, it.tag, it.model, it.serial, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
     .sort((a, b) => (a.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) - (b.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) || a.it.name.localeCompare(b.it.name));
+}
+function placeRows(q) {   // shelves, cabinets and boxes whose name matches: open their page
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean), us = (state.spaceUnits || []).filter(u => words.every(w => (u.name + " " + placeOf(u)).toLowerCase().includes(w))).slice(0, 4);
+  return us.length ? `<ul class="res">${us.map(u => `<li><div class="nm"><button class="linkname" data-act="loc-open" data-id="${u.id}"><strong>${esc(u.name)}</strong></button><div class="sub">Place · ${esc(placeOf(u) || "no room")} · ${placedAt(u.id).length} item${placedAt(u.id).length === 1 ? "" : "s"}</div></div><button class="btn sec" data-act="loc-open" data-id="${u.id}">Open</button></li>`).join("")}</ul>` : "";
 }
 function resultRows(list) {
   if (!list.length) return `<p class="hint">Nothing matches. Try part of the name, a size like M6, or a shelf name.</p>`;
@@ -616,7 +633,8 @@ function setupSteps() {
 function recentFeed(n) {
   const a = state.events.map(e => ({ ts: e.ts, what: eventText(e), note: e.action === "unknown" ? "Needs checking" : "", warn: needsLook(e) }));
   const b = state.cevents.map(e => ({ ts: e.ts, what: `${e.item_name || "Item"}: ${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})`, note: [e.note, e.person].filter(Boolean).join(" · ") }));
-  return [...a, ...b].sort((x, y) => new Date(y.ts) - new Date(x.ts)).slice(0, n);
+  const c = (state.loans || []).filter(l => !(l.kind === "consumable" && !l.due_at)).flatMap(l => [{ ts: l.taken_at, what: `${l.item_name} taken by ${l.person}`, note: dueWord({ ...l, returned_at: null }) }, ...(l.returned_at ? [{ ts: l.returned_at, what: `${l.item_name} returned`, note: "" }] : [])]);
+  return [...a, ...b, ...c].sort((x, y) => new Date(y.ts) - new Date(x.ts)).slice(0, n);
 }
 /* ---------- similar things stored in different places: suggest keeping them together ---------- */
 const SIM_OFF = () => { try { return JSON.parse(localStorage.getItem("ts_sim_off") || "[]"); } catch (e) { return []; } };
@@ -682,7 +700,7 @@ function renderHome() {
     <button data-act="add-any">${icon("plus")}Add an item</button></div></section>
   ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
   <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
-  const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? resultRows(searchItems(q.value)) : ""; };
+  const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? placeRows(q.value) + resultRows(searchItems(q.value)) : ""; };
   q.oninput = paint; q.onkeydown = e => { if (e.key === "Enter") { const r = searchItems(q.value)[0]; if (r) itemSheet(r.kind, r.it.id); } if (e.key === "Escape") { q.value = ""; paint(); } }; paint();
 }
 
@@ -713,9 +731,11 @@ function paintSheet() {
   const sh = state.sheet; if (!sh) return; const tool = sh.kind === "tool", asset = sh.kind === "asset", it = itemsOf(sh.kind).find(x => x.id === sh.id), d = $("#dlg");
   if (!it) { d.close(); return; }
   const ord = onOrder(sh.kind, it.id), where = whereText(it);
-  const hist = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
+  const lh = (state.loans || []).filter(l => l.kind === sh.kind && l.item_id === it.id).slice(0, 4).map(l => [l.taken_at, l.kind === "consumable" ? `${l.qty} taken by ${l.person}${l.due_at ? "" : " (used)"}` : `Taken by ${l.person} · ${l.returned_at ? "returned " + when(l.returned_at) : dueWord(l)}`]);
+  const hist0 = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
+  const hist = [...hist0, ...lh].sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 8);
   const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ...(loanFor("asset", it.id) ? [["Taken by", loanFor("asset", it.id).person + (whyText(loanFor("asset", it.id)) ? " · " + whyText(loanFor("asset", it.id)) : "")], ["Return", dueWord(loanFor("asset", it.id))]] : []), ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
-    : tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
+    : tool ? [["Status", it.status === "out" ? outWord(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
     : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ...(wunitOf(it.id) ? [["Weighing unit", wunitOf(it.id).name + (wunitOf(it.id).last_g != null ? " · " + fmtG(wunitOf(it.id).last_g, 1) + " g" : "")]] : []), ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
     <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
@@ -724,7 +744,7 @@ function paintSheet() {
       ${it.unit_id ? `<button type="button" class="btn" data-act="locate" data-kind="${sh.kind}" data-id="${it.id}">Show in 3D</button>` : ""}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Change where it lives</summary><div style="margin-top:8px">${placeHtml(it, "sp")}${(state.spaceUnits || []).length ? `<button type="button" class="btn sec" id="spSave" style="margin-top:8px">Save place</button>` : ""}</div></details></div>
     ${asset ? (it.notes ? `<div><h3 style="font-size:22px;margin-bottom:6px">Notes</h3><p style="margin:0;white-space:pre-wrap">${esc(it.notes)}</p></div>` : "") : ""}
-    ${asset ? "" : `<div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div>`}</div>
+    ${asset && !hist.length ? "" : `<div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div>`}</div>
     <div class="dlg-f">
       ${takeBtn(sh.kind, it)}
       ${asset ? `<button type="button" class="btn sec" data-act="asset-flip" data-id="${it.id}">${it.status === "repair" ? "Back in use" : "Report: in repair"}</button>
@@ -735,7 +755,7 @@ function paintSheet() {
       : `<button type="button" class="btn sec" data-act="add-stock" data-id="${it.id}">Add stock</button><button type="button" class="btn sec" data-act="count-item" data-id="${it.id}">Count it</button>
         <button type="button" class="btn sec" data-act="report" data-kind="consumable" data-id="${it.id}">Reorder</button>
         <button type="button" class="btn sec" data-act="citem-edit" data-id="${it.id}">Edit</button>`}
-      <button type="submit" class="btn">Close</button></div></form>`;
+      </div></form>`;
   bindPlace("sp");
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
@@ -830,11 +850,11 @@ function renderBoard() {
     return;
   }
   h += `<div class="summary"><div><h1>${tools.length - out.length} of ${tools.length} tools in</h1>
-    <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong> (${ago(t.taken_at)})`).join(", ") + "." : "Everything is back on the board."} Tap a tool for details.</p></div>
+    <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong>${t.taken_at ? " (" + ago(t.taken_at) + ")" : ""}`).join(", ") + "." : "Everything is back on the board."} Tap a tool for details.</p></div>
     <div class="row" style="gap:8px"><button class="btn sec" data-act="qr-all">Print QR labels</button><button class="btn sec" data-act="go:tools">Manage tools</button></div></div>
   ${loansHtml()}
   <div class="board">${tools.map(t => t.status === "out" ? `
-    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div>${loanFor("tool", t.id) ? `<div class="slot" style="margin-top:4px"><strong>${esc(loanFor("tool", t.id).person)}</strong>${whyText(loanFor("tool", t.id)) ? " · " + esc(whyText(loanFor("tool", t.id))) : ""}<br>${esc(dueWord(loanFor("tool", t.id)))}</div>` : ""}</div>
+    <div class="tile out"><div><span class="badge">${esc(outWord(t.taken_at))}</span><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div>${loanFor("tool", t.id) ? `<div class="slot" style="margin-top:4px"><strong>${esc(loanFor("tool", t.id).person)}</strong>${whyText(loanFor("tool", t.id)) ? " · " + esc(whyText(loanFor("tool", t.id))) : ""}<br>${esc(dueWord(loanFor("tool", t.id)))}</div>` : ""}</div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="in">Mark in</button></div></div>` : `
     <div class="tile"><div><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div></div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="take" data-kind="tool" data-id="${t.id}">Take</button></div></div>`).join("")}</div>
@@ -972,7 +992,7 @@ function renderActivity() {
 /* ---------- scale ---------- */
 function devInfo() {
   const d = state.device; if (!d) return "No scale has registered yet. Power the ESP32 and check its WiFi and key settings.";
-  return `${online() ? "Online" : "Offline"} &middot; WiFi ${d.rssi ?? "-"} dBm &middot; firmware ${esc(d.fw || "-")} &middot; ${d.cal_factor == null ? "not calibrated" : "calibrated"}`;
+  return [online() ? "Online" : "Offline", d.rssi != null ? "WiFi " + d.rssi + " dBm" : "", d.fw ? "firmware " + esc(d.fw) : "", d.cal_factor == null ? "not calibrated" : "calibrated"].filter(Boolean).join(" &middot; ");
 }
 function accHtml() {
   if (state.device?.mode === "count") return `<p class="hint">The scale is counting parts, so the tool check is paused. Leave the Count page to switch back.</p>`;
@@ -1041,7 +1061,7 @@ function renderStock() {
   <div class="row" style="margin-bottom:12px;align-items:center"><div class="field" style="max-width:320px"><input id="stQ" type="search" placeholder="Filter by name or size" value="${esc(state.stockQ || "")}" aria-label="Filter"></div>
     <div class="filters" role="group" aria-label="Show" style="margin:0">${[["all", "All"], ["low", "Low"], ["stale", "Not counted in 30 days"]].map(([k, l]) => `<button data-act="stockf" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div></div>
   ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th><th></th></tr></thead><tbody>
-  ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}${wunitOf(i.id) ? `<div class="hint">Weighed by ${esc(wunitOf(i.id).name)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(whereText(i) || "-")}</td>
+  ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}${wunitOf(i.id) ? `<div class="hint">Weighed by ${esc(wunitOf(i.id).name)}</div>` : ""}</td><td class="${i.category ? "" : "blank"}">${esc(i.category || "")}</td><td>${esc(whereText(i) || "-")}</td>
     <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}${onOrder("consumable", i.id) ? ` <span class="chip">On order</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td>
     <td><button class="btn sec" data-act="add-stock" data-id="${i.id}">Add stock</button> <button class="btn sec" data-act="count-item" data-id="${i.id}">Count</button>${lowItem(i) && !onOrder("consumable", i.id) ? ` <button class="btn sec" data-act="reorder-suggest" data-id="${i.id}">Order</button>` : ""}${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty"><p>Nothing matches this filter.</p></div>`}`;
@@ -1096,6 +1116,7 @@ function updateCount() {
   if (!c || c.live == null) { big.textContent = "-"; st.className = "status-line err"; st.textContent = "Scale offline."; rd.textContent = ""; return; }
   big.textContent = c.n; big.style.opacity = c.stable ? 1 : .5;
   rd.innerHTML = `Scale reads ${fmtG(c.live)} g, minus bin ${fmtG(c.cont)} g = ${fmtG(c.net)} g, which is ${fmtG(c.raw, 1)} pieces.`;
+  if (c.net < -Math.max(2, Number(c.it.unit_g) / 2)) { big.textContent = "-"; st.className = "status-line"; st.textContent = "Put the bin with its parts on the scale."; return; }
   if (!c.stable) { st.className = "status-line"; st.textContent = "Moving. Wait for it to settle."; }
   else if (c.frac > 0.3) { st.className = "status-line err"; st.textContent = "Not sure: it falls between whole pieces. Check the weight per piece and the empty bin weight."; }
   else if (Number(c.it.unit_g) < 0.5) { st.className = "status-line"; st.textContent = "Settled, but these pieces are very light for this load cell. Treat the count as approximate."; }
@@ -1178,7 +1199,7 @@ function renderReorder() {
   ${state.draftMsg ? `<div class="banner info"><span>Added ${state.draftMsg.added} item${state.draftMsg.added === 1 ? "" : "s"} to "<strong>${esc(state.draftMsg.label)}</strong>"${state.draftMsg.already_listed ? ` (${state.draftMsg.already_listed} were already on it)` : ""}. Open MR Tracker, go to Drafts, check the prices and links, and submit it at the end of the month.</span><button class="btn sec" data-act="clear-msg">OK</button></div>` : ""}
   ${sug.length ? `<section class="block" style="margin-top:0"><h2>Low on stock, not on the list yet</h2><div>${sug.map(i => `<span class="chip warn" style="font-size:15px;padding:4px 10px">${esc(i.name)}: ${i.count_on_hand} left <button class="linkbtn" style="color:var(--steel);padding:0 0 0 8px" data-act="reorder-suggest" data-id="${i.id}">Add</button></span>`).join("")}</div></section>` : ""}
   ${open.length ? `<div class="tablewrap" style="margin-top:16px"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Why</th><th>Qty</th><th>Price</th><th>Details</th><th></th></tr></thead><tbody>${open.map(row).join("")}</tbody></table></div>`
-    : `<div class="empty" style="margin-top:16px"><h2>Nothing to order</h2><p>Items go on this list when a consumable falls to its minimum, or when you press Replace on a tool.</p></div>`}
+    : `<div class="empty" style="margin-top:16px"><h2>${sug.length ? "The list is empty" : "Nothing to order"}</h2><p>${sug.length ? "Press Add on the low items above to put them on the list." : "Items go on this list when a consumable falls to its minimum, or when you press Replace on a tool."}</p></div>`}
   ${drafted.length ? `<section class="block"><h2>Already in an MR draft</h2><ul class="log">${drafted.map(r => `<li><div class="t">${esc(when(r.created_at))}</div><div><div class="what">${esc(r.item_name)} x ${r.qty}</div><div class="note">${esc(r.reason)}</div></div></li>`).join("")}</ul></section>` : ""}`;
 }
 function reportDialog(kind, item) {
@@ -1200,7 +1221,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "48";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "49";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1375,7 +1396,7 @@ function locSheet(uid) {
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${esc(placeOf(u))}</div></div><div class="dlg-b">
     ${out.length ? `<div class="banner info" style="margin:0"><span>${out.length} item${out.length > 1 ? "s" : ""} from here taken out: ${out.map(l => esc(l.item_name) + " (" + esc(l.person) + ")").join(", ")}.</span></div>` : ""}
     ${body}<p class="hint" style="margin:0">Tap Take on an item to record it. You need to be signed in.</p></div>
-    <div class="dlg-f"><button type="button" class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button><button type="button" class="btn sec" data-act="loc-3d" data-id="${u.id}">Show in 3D</button><button type="submit" class="btn">Close</button></div></form>`;
+    <div class="dlg-f"><button type="button" class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button><button type="button" class="btn sec" data-act="loc-3d" data-id="${u.id}">Show in 3D</button></div></form>`;
   if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; try { if (new URLSearchParams(location.search).get("loc")) history.replaceState(null, "", location.pathname); } catch (e) {} };
 }
 function openDeepLink() {

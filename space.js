@@ -981,7 +981,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   /* ====================================================== Find (3D) ====================================================== */
   async function view3d() {
     ensureStyle(); stop(); const me = S.view = {};
-    $("#main").innerHTML = `<div class="summary"><div><h1>Find</h1><p>Type what you are looking for. Its shelf or cabinet lights up in your space. Drag to turn the view, scroll or pinch to zoom.</p></div></div>
+    $("#main").innerHTML = `<div class="findbar"><div class="srch">${typeof icon === "function" ? icon("find") : ""}<input id="sFind" type="search" placeholder="What are you looking for? e.g. cutter, M6, shelf A" value="${esc(S.find || "")}" autocomplete="off" aria-label="What are you looking for?"></div><div id="sRes"></div></div>
       <div class="split"><div class="panel" style="padding:0"><div id="s3Box" style="position:relative;width:100%;height:clamp(300px,62vw,520px);background:#16252D;overflow:hidden"><canvas id="s3" style="width:100%;height:100%;display:block;touch-action:none"></canvas><div id="s3Msg" class="hint" style="position:absolute;left:12px;top:10px;color:#9DB0B8;margin:0">Loading 3D...</div></div></div>
         <div class="panel" id="s3Side"></div></div>`;
     try { await Promise.all([load(), window.THREE ? 0 : loadScript(THREE_URL)]); } catch (e) { const m = $("#s3Msg"); if (m) m.textContent = "Could not load 3D: " + (e.message || e); return; }
@@ -1162,9 +1162,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   function paintSide() {
     const el = $("#s3Side"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
-    const find = `<div class="field"><label for="sFind">What are you looking for?</label><input id="sFind" type="text" placeholder="e.g. cutter, M6, screw" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:8px"></div>`;
-    const findSlim = `<div class="field" style="margin:0"><input id="sFind" type="search" placeholder="Search for an item…" aria-label="Search for an item" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:6px"></div>`;
-    if (!u) { el.innerHTML = find + `<p class="hint" style="margin-top:12px">Or click a shelf, cabinet or box in the 3D view to see what is inside, and to add things to it.</p>`; bindFind(); showRes(); return; }
+    if (!u) { el.innerHTML = `<h2 style="margin-top:0">Your space</h2><p class="hint" style="margin:0">Search above, or tap a shelf, cabinet or box in the 3D view to see what is inside. Drag to turn the view; pinch or scroll to zoom.</p>`; bindFind(); showRes(); return; }
     const rm = roomOf(u), p = parentOf(u), hi = x => S.focusItem === x.kind + ":" + x.it.id ? "font-weight:700" : "";
     const takeSm = x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id); return l ? `<button type="button" class="btn sec" style="padding:0 10px;font-size:13px;line-height:26px" data-act="loan-return" data-loan="${l.id}">Return</button>` : x.kind === "tool" && x.it.status === "out" ? "" : `${x.kind === "consumable" ? `<button type="button" class="btn sec" style="padding:0 10px;font-size:13px;line-height:26px" data-act="add-stock" data-id="${x.it.id}">Add</button> ` : ""}<button type="button" class="btn sec" style="padding:0 10px;font-size:13px;line-height:26px" data-act="take" data-kind="${x.kind}" data-id="${x.it.id}">Take</button>`; };
     const itemRows = its => its.map(x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id); return `<div style="font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:2px 0;${hi(x)}"><span><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : x.kind === "asset" ? "#6B4FA0" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${l ? ` <span class="hint" style="margin:0">with ${esc(l.person)}</span>` : x.kind === "tool" && x.it.status === "out" ? " (out)" : x.kind === "consumable" ? ` <span class="hint" style="margin:0">${x.it.count_on_hand}</span>` : ""}</span>${takeSm(x)}</div>`; }).join("");
@@ -1179,7 +1177,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
       return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
-    el.innerHTML = findSlim + `<h2 style="margin-top:12px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
+    el.innerHTML = `<h2 style="margin-top:0">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
       <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sec" id="sEdit">Edit this place</button><button class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button></div>`;
     bindFind(); showRes(); $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
     el.querySelectorAll("[data-peek]").forEach(b => b.onclick = () => { S.peek = S.peek === b.dataset.peek ? null : b.dataset.peek; if (S.peek === null) S.focusItem = null; const id = b.dataset.peek.startsWith("box:") ? b.dataset.peek.slice(4) : null; S.hl = id || u.id; paintSide(); });
@@ -1188,13 +1186,18 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     el.querySelectorAll("[data-here]").forEach(b => b.onclick = () => requireAuth(() => addHere(u.id, Number(b.dataset.here))));
     el.querySelectorAll("[data-herebox]").forEach(b => b.onclick = () => requireAuth(() => addHere(b.dataset.herebox, Number(b.dataset.sec || 1))));
   }
-  function bindFind() { const i = $("#sFind"); if (!i) return; i.oninput = () => { S.find = i.value; showRes(); }; }
-  function showRes() {
-    const el = $("#sRes"); if (!el) return; const q = (S.find || "").trim().toLowerCase(); if (!q) { el.innerHTML = ""; return; }
-    const hits = allItems().filter(x => (itemName(x) + " " + (x.it.slot || "") + " " + (x.it.location || "") + " " + (x.it.category || "") + " " + (x.it.tag || "") + " " + (x.it.model || "")).toLowerCase().includes(q)).slice(0, 8);
-    el.innerHTML = hits.length ? hits.map(x => `<div class="row" style="justify-content:space-between;gap:6px;font-size:14px;border-bottom:1px solid var(--line);padding:4px 0"><span>${esc(itemName(x))}<br><span class="hint">${esc(whereOf(x.it) || "not placed yet")}</span></span><button class="btn sec" style="padding:2px 10px" data-go="${x.kind}:${x.it.id}">Show</button></div>`).join("") : `<p class="hint">Nothing matches.</p>`;
-    el.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const i = b.dataset.go.indexOf(":"); focusItem(b.dataset.go.slice(0, i), b.dataset.go.slice(i + 1)); });
+  function bindFind() { const i = $("#sFind"); if (!i) return; i.oninput = () => { S.find = i.value; showRes(); }; i.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#sRes [data-go], #sRes [data-gou]")?.click(); } if (e.key === "Escape") { i.value = S.find = ""; showRes(); } }; }
+  function showRes() {   // items and places that match every word; picking one flies the 3D view there
+    const el = $("#sRes"); if (!el) return; const words = (S.find || "").toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) { el.innerHTML = ""; return; }
+    const hay = x => (itemName(x) + " " + [x.it.slot, x.it.location, x.it.category, x.it.tag, x.it.model].join(" ") + " " + (whereOf(x.it) || "")).toLowerCase();
+    const hits = allItems().filter(x => words.every(w => hay(x).includes(w))).slice(0, 8), places = S.units.filter(u => words.every(w => (u.name + " " + unitPath(u)).toLowerCase().includes(w))).slice(0, 3);
+    const kn = k => k === "tool" ? "Tool" : k === "asset" ? "Asset" : "Consumable";
+    el.innerHTML = places.length || hits.length ? `<ul class="res">${places.map(u => `<li class="${S.hl === u.id && !S.focusItem ? "on" : ""}"><div class="nm"><strong>${esc(u.name)}</strong><div class="sub">Place · ${esc(unitPath(u))}</div></div><button class="btn sec" data-gou="${u.id}">Show</button></li>`).join("")}${hits.map(x => { const k = x.kind + ":" + x.it.id, on = S.focusItem === k; return `<li class="${on ? "on" : ""}"><div class="nm"><strong>${esc(itemName(x))}</strong><div class="sub">${kn(x.kind)} · ${esc(whereOf(x.it) || "not placed yet")}</div></div><button class="btn ${on ? "" : "sec"}" data-go="${k}">Show</button></li>`; }).join("")}</ul>` : `<p class="hint" style="margin:6px 0 0">Nothing matches. Try part of the name, a size like M6, or a shelf name.</p>`;
+    const toView = () => { if (innerWidth < 900) $("#s3Box")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    el.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const i = b.dataset.go.indexOf(":"); focusItem(b.dataset.go.slice(0, i), b.dataset.go.slice(i + 1)); showRes(); toView(); });
+    el.querySelectorAll("[data-gou]").forEach(b => b.onclick = () => { const id = b.dataset.gou; S.hl = id; S.sel = { kind: "unit", id }; S.focusItem = null; focusUnit(id, true); paintSide(); showRes(); toView(); });
   }
+
 
   /* ====================================================== Items ====================================================== */
   async function items() {

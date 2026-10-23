@@ -265,13 +265,13 @@ const SECTIONS = [
   ["home", "Home", [["home", "Overview"]]],
   ["find", "Find", [["s3d", "Find"], ["splan", "Edit space"]]],
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"], ["loans", "Loans", 1]]],
-  ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["history", "History"], ["detect", "Count by camera", 1]]],
+  ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["history", "History"]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Camera"]]],
+  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Sorter camera"], ["detect", "Live detection", 1]]],
 ];
 /* pages that belong together share one nav entry and show a small switch above the page */
-const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["count", "By weight"], ["detect", "By camera"]]];
-const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "count", loans: "board" };
+const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["label", "Label pictures"], ["detect", "Live detection"]]];
+const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "label", loans: "board" };
 const navKey = t => NAVKEY[t] || t;
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
@@ -673,8 +673,7 @@ function renderHome() {
   ${simSection()}
   <section class="block"><h2>Quick actions</h2><div class="qa">
     <button data-act="go:s3d">${icon("cube")}Show me where</button>
-    <button data-act="go:count">${icon("count")}Count by weight</button>
-    <button data-act="go:detect">${icon("camera")}Count by camera</button>
+    <button data-act="go:count">${icon("count")}Count stock</button>
     <button data-act="go:board">${icon("tools")}Who has what</button>
     <button data-act="go:splan">${icon("cube")}Edit my space</button>
     <button data-act="add-any">${icon("plus")}Add an item</button></div></section>
@@ -1035,7 +1034,7 @@ function renderStock() {
   const list = items.filter(i => (f === "all" || (f === "low" ? lowItem(i) : stale(i))) && (!q || (fullName(i) + " " + i.category + " " + whereText(i)).toLowerCase().includes(q)));
   $("#main").innerHTML = `<div class="summary"><div><h1>${low.length ? low.length + " low on stock" : "Stock is OK"}</h1>
     <p>${items.length} consumable${items.length > 1 ? "s" : ""}. ${low.length ? "Low: " + low.map(i => `<strong>${esc(i.name)}</strong> (${i.count_on_hand})`).join(", ") + "." : "Nothing is at or below its minimum."}</p></div>
-    <div class="row"><button class="btn" data-act="go:count">Count by weight</button><button class="btn sec" data-act="go:detect">Count by camera</button></div></div>
+    <div class="row"><button class="btn" data-act="go:count">Count by weight</button></div></div>
   <div class="row" style="margin-bottom:12px;align-items:center"><div class="field" style="max-width:320px"><input id="stQ" type="search" placeholder="Filter by name or size" value="${esc(state.stockQ || "")}" aria-label="Filter"></div>
     <div class="filters" role="group" aria-label="Show" style="margin:0">${[["all", "All"], ["low", "Low"], ["stale", "Not counted in 30 days"]].map(([k, l]) => `<button data-act="stockf" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div></div>
   ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th><th></th></tr></thead><tbody>
@@ -1198,7 +1197,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "46";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "47";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {

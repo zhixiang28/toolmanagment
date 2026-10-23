@@ -98,7 +98,7 @@
 
   async function detect() {
     stop(); const me = D.view = {};
-    $("#main").innerHTML = `<div class="summary"><div><h1>Detect</h1><p>Spread the fasteners out so they do not touch. It finds and counts every one in the picture.</p></div></div>
+    $("#main").innerHTML = `<div class="summary"><div><h1>Live detection</h1><p>Spread the fasteners out so they do not touch. The camera finds each one and says its type. This is the eye for the fastener sorter; counting is done by the scale.</p></div></div>
       <div class="grid2"><div class="panel"><div class="vcam" id="dBox"><video id="dVid" playsinline muted autoplay></video><canvas id="dOv" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas></div>
         <div class="field" style="margin-top:12px"><label for="dConf">Confidence needed (higher is stricter): <span id="dConfV">${Math.round(D.conf * 100)}%</span></label><input id="dConf" type="range" min="10" max="90" step="5" value="${Math.round(D.conf * 100)}"></div>
         <div class="row" style="margin-top:12px"><button class="btn sec" id="dBg">Learn the empty background</button><span class="hint" id="dBgSt" style="margin:0">Take everything out of view, then press. Anything that has not changed from the empty scene is then ignored.</span></div>

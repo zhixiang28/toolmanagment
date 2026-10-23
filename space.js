@@ -493,14 +493,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     S.rooms.forEach(r => { const as = r.points.map(q => V.axis === "x" ? q[0] : q[1]); add(Math.min(...as), Math.max(...as)); ymax = Math.max(ymax, r.h); });
     tops().forEach(u => { const e = aext(fp(u)); add(e[0], e[1]); ymax = Math.max(ymax, (u.elev || 0) + u.h); });
     if (hmin > hmax) { hmin = 0; hmax = 6; ymax = 2.6; }
-    const ppm = Math.min((cv.width - 30) / (hmax - hmin + 0.6), (cv.height - 46) / (ymax + 0.2)); S.ev = { ppm, h0: (hmin + hmax) / 2 - cv.width / 2 / ppm, base: cv.height - 24 };
+    const ppm = Math.min((cv.width - 30) / (hmax - hmin + 0.6), (cv.height - 46) / (ymax + 0.2)); S.ev = { ppm, h0: (hmin + hmax) / 2 - cv.width / 2 / ppm, base: cv.height - 24 }; S.lk = null;   // a fresh fit follows the plan when the two are linked
   }
   function paintSeg() {
     const el = $("#eSeg"); if (!el) return; const V = EV();
     el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.edge} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
     el.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.eview = b.dataset.view; try { localStorage.setItem("sp_view", S.eview); } catch (e) {} paintSeg(); fitFront(); drawFront(); });
     const sz = $("#eSz"); if (sz) { sz.innerHTML = ["S", "M", "L"].map(k => `<button data-sz="${k}" aria-pressed="${S.esize === k}" aria-label="${({ S: "Small", M: "Medium", L: "Large" })[k]} view">${k}</button>`).join(""); sz.querySelectorAll("[data-sz]").forEach(b => b.onclick = () => { S.esize = b.dataset.sz; try { localStorage.setItem("sp_esize", S.esize); } catch (e) {} sizeCanvas(); fitFront(); draw(); paintSeg(); }); }
-    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "link") { S.link = !S.link; try { localStorage.setItem("sp_link", S.link ? "1" : "0"); } catch (e) {} S.lk = null; paintSeg(); if (S.link) draw(); return; } if (b.dataset.ez === "fit") { fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
+    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "link") { S.link = !S.link; try { localStorage.setItem("sp_link", S.link ? "1" : "0"); } catch (e) {} S.lk = null; paintSeg(); if (S.link) draw(); return; } if (b.dataset.ez === "fit") { if (S.link) { fitView(); fitFront(); draw(); return; } fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
     const lk = $("#eLink"); if (lk) { lk.setAttribute("aria-pressed", String(!!S.link)); lk.textContent = S.link ? "Linked" : "Link"; }
     const tt = $("#eTitle"); if (tt) tt.textContent = V.label + " view";
     const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " (" + V.edge + " of the plan), looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
@@ -980,14 +980,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
 
   /* ====================================================== Find (3D) ====================================================== */
   async function view3d() {
-    stop(); const me = S.view = {};
+    ensureStyle(); stop(); const me = S.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Find</h1><p>Type what you are looking for. Its shelf or cabinet lights up in your space. Drag to turn the view, scroll or pinch to zoom.</p></div></div>
       <div class="split"><div class="panel" style="padding:0"><div id="s3Box" style="position:relative;width:100%;height:clamp(300px,62vw,520px);background:#16252D;overflow:hidden"><canvas id="s3" style="width:100%;height:100%;display:block;touch-action:none"></canvas><div id="s3Msg" class="hint" style="position:absolute;left:12px;top:10px;color:#9DB0B8;margin:0">Loading 3D...</div></div></div>
         <div class="panel" id="s3Side"></div></div>`;
     try { await Promise.all([load(), window.THREE ? 0 : loadScript(THREE_URL)]); } catch (e) { const m = $("#s3Msg"); if (m) m.textContent = "Could not load 3D: " + (e.message || e); return; }
     if (S.view !== me) return; if (!window.WebGLRenderingContext) { $("#s3Msg").textContent = "This browser cannot show 3D."; return; }
     try { init3d(); } catch (e) { const m = $("#s3Msg"); if (m) m.textContent = "Could not start 3D: " + (e.message || e); return; }
-    $("#s3Msg").textContent = S.rooms.length || S.units.length ? "" : "Nothing drawn yet. Draw rooms and shelves under Setup, Space plan."; paintSide();
+    $("#s3Msg").textContent = S.rooms.length || S.units.length ? "" : "Nothing drawn yet. Draw rooms and shelves in Find, Edit space."; paintSide();
     if (state.spaceFocus) { const f = state.spaceFocus; state.spaceFocus = null; S.find = ""; focusItem(f.kind, f.id); }
     else if (state.spaceFocusUnit && unit(state.spaceFocusUnit)) { S.hl = state.spaceFocusUnit; S.sel = { kind: "unit", id: S.hl }; state.spaceFocusUnit = null; focusUnit(S.hl); paintSide(); }
   }
@@ -1136,7 +1136,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 }, overview);
   }
   function focusItem(kind, id) {
-    const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
+    const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Catalogue, Place items."); return; }
     S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl, true); paintSide();
   }
   /* a shelf, cabinet or rack as a small picture: one row per level, top first, a coloured tag for each box. Tap a tag to open what is inside below it. */
@@ -1163,9 +1163,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function paintSide() {
     const el = $("#s3Side"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     const find = `<div class="field"><label for="sFind">What are you looking for?</label><input id="sFind" type="text" placeholder="e.g. cutter, M6, screw" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:8px"></div>`;
+    const findSlim = `<div class="field" style="margin:0"><input id="sFind" type="search" placeholder="Search for an item…" aria-label="Search for an item" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:6px"></div>`;
     if (!u) { el.innerHTML = find + `<p class="hint" style="margin-top:12px">Or click a shelf, cabinet or box in the 3D view to see what is inside, and to add things to it.</p>`; bindFind(); showRes(); return; }
     const rm = roomOf(u), p = parentOf(u), hi = x => S.focusItem === x.kind + ":" + x.it.id ? "font-weight:700" : "";
-    const itemRows = its => its.map(x => `<div style="font-size:14px;${hi(x)}"><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : x.kind === "asset" ? "#6B4FA0" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${x.kind === "tool" && x.it.status === "out" ? " (out)" : ""}</div>`).join("");
+    const takeSm = x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id); return l ? `<button type="button" class="btn sec" style="padding:0 10px;font-size:13px;line-height:26px" data-act="loan-return" data-loan="${l.id}">Return</button>` : x.kind === "tool" && x.it.status === "out" ? "" : `<button type="button" class="btn sec" style="padding:0 10px;font-size:13px;line-height:26px" data-act="take" data-kind="${x.kind}" data-id="${x.it.id}">Take</button>`; };
+    const itemRows = its => its.map(x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id); return `<div style="font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:2px 0;${hi(x)}"><span><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : x.kind === "asset" ? "#6B4FA0" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${l ? ` <span class="hint" style="margin:0">with ${esc(l.person)}</span>` : x.kind === "tool" && x.it.status === "out" ? " (out)" : x.kind === "consumable" ? ` <span class="hint" style="margin:0">${x.it.count_on_hand}</span>` : ""}</span>${takeSm(x)}</div>`; }).join("");
     const addBtn = (label, attr) => state.user ? `<button class="btn sec" ${attr} style="padding:2px 10px;font-size:14px">＋ ${label}</button>` : "";
     const secList = b => Array.from({ length: b.levels }, (_, i) => i + 1).map(n => `<div style="margin-left:14px;font-size:13px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>Section ${n}</strong>${addBtn("Add", `data-herebox="${b.id}" data-sec="${n}"`)}</div>${itemRows(itemsAt(b.id, n)) || `<div class="hint" style="margin:0">empty</div>`}</div>`).join("");
     const boxBody = b => (b.levels > 1 ? secList(b) : itemRows(itemsAt(b.id)) || `<div class="hint" style="margin:0 0 0 14px">empty</div>`);
@@ -1177,8 +1179,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
       return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
-    el.innerHTML = find + `<h2 style="margin-top:16px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
-      <div class="row" style="margin-top:10px"><button class="btn sec" id="sEdit">Edit in space plan</button></div>`;
+    el.innerHTML = findSlim + `<h2 style="margin-top:12px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
+      <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><button class="btn sec" id="sEdit">Edit this place</button><button class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button></div>`;
     bindFind(); showRes(); $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
     el.querySelectorAll("[data-peek]").forEach(b => b.onclick = () => { S.peek = S.peek === b.dataset.peek ? null : b.dataset.peek; if (S.peek === null) S.focusItem = null; const id = b.dataset.peek.startsWith("box:") ? b.dataset.peek.slice(4) : null; S.hl = id || u.id; paintSide(); });
     if ($("#sRack")) $("#sRack").onclick = () => { S.hl = p.id; S.sel = { kind: "unit", id: p.id }; focusUnit(p.id); paintSide(); };
@@ -1196,7 +1198,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
 
   /* ====================================================== Items ====================================================== */
   async function items() {
-    stop(); const me = S.view = {};
+    ensureStyle(); stop(); const me = S.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Place items</h1><p>Say where each tool and consumable lives: which shelf or cabinet, and which level (1 is the lowest). Then Find can show it in 3D.</p></div></div>
       <div class="row" style="margin-bottom:12px"><div class="field"><label for="iQ">Search</label><input id="iQ" type="text" placeholder="name or size"></div><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="iUn"> Not placed yet only</label></div><div id="iList"></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;

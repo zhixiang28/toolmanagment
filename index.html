@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Tool Scale</title>
+<title>Inventory Space</title>
+<link rel="icon" href="logo/icon.svg" type="image/svg+xml">
+<link rel="icon" href="logo/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="logo/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Inventory Space">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#14232B">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -266,9 +275,24 @@ const ICON = {
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
 state.tab = "home"; state.lastTab = {};
-try { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } catch (e) {}
+try { const go = new URLSearchParams(location.search).get("go"); if (go && SECTIONS.some(s => s[2].some(([k]) => k === go))) { state.tab = go; localStorage.setItem("ts_tab", go); } else { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } } catch (e) {}
 const devId = () => state.tab === "count" ? SCALES.count : SCALES.tools;
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
+
+/* ---------- install as an app ---------- */
+const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function paintInstall() { const b = $("#installbtn"); if (b) b.hidden = standalone() || !(state.installEv || isIOS()); }
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); state.installEv = e; paintInstall(); });
+window.addEventListener("appinstalled", () => { state.installEv = null; paintInstall(); toast("Installed. Open Inventory Space from your home screen or app list."); });
+async function installApp() {
+  if (state.installEv) { const e = state.installEv; state.installEv = null; e.prompt(); await e.userChoice.catch(() => {}); paintInstall(); return; }
+  const d = $("#dlg");
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Install Inventory Space</h2></div><div class="dlg-b"><p style="margin:0">Add it to your home screen so it opens like an app, full screen, with its own icon.</p>
+    <ol style="margin:0;padding-left:20px;display:grid;gap:6px"><li>Open this page in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow).</li><li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li></ol></div><div class="dlg-f"><button type="submit" class="btn">Got it</button></div></form>`;
+  d.showModal();
+}
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 
 /* ---------- helpers ---------- */
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
@@ -390,9 +414,10 @@ function keepWatching() {
 function startApp() {
   $("#app").innerHTML = `
   <header class="hdr"><div class="hdr-in">
-    <button class="brand" id="brand" title="Home">Tool Scale</button>
+    <button class="brand" id="brand" title="Home"><img src="logo/icon.svg" alt="" width="30" height="30" style="vertical-align:-6px;margin-right:8px">Inventory Space</button>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
+    <button class="linkbtn" id="installbtn" style="font-size:14px" hidden>Install app</button>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
   <nav class="tabs" aria-label="Sections">${SECTIONS.map(([k, l]) => `<button class="tab" data-sec="${k}">${icon(k)}<span>${l}</span><span class="bd"></span></button>`).join("")}</nav>
@@ -401,6 +426,7 @@ function startApp() {
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec); setTab(state.lastTab[s[0]] || s[2][0][0]); });
   $("#brand").onclick = () => setTab("home");
+  $("#installbtn").onclick = installApp; paintInstall();
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
@@ -491,7 +517,7 @@ async function refreshAll() {
     if (state.tab === "scale") await refreshWeightEvents();
     if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel")) && !$("#dlg").open && !/^(q|stQ)$/.test(document.activeElement?.id || "")) renderTab();
     else if (changed && $("#sheetForm")) paintSheet();
-    document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Tool Scale";
+    document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Inventory Space";
   } catch (e) { /* banner already shown */ }
 }
 async function refreshWeightEvents() {

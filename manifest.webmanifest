@@ -1,0 +1,21 @@
+{
+  "name": "Inventory Space",
+  "short_name": "Inventory",
+  "description": "Tools, stock, orders and where everything lives in the workshop.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14232B",
+  "theme_color": "#14232B",
+  "icons": [
+    { "src": "logo/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "logo/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "logo/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Find an item", "url": "./?go=s3d", "icons": [{ "src": "logo/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Count by weight", "url": "./?go=count", "icons": [{ "src": "logo/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

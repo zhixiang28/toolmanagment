@@ -7,7 +7,12 @@
 <title>Inventory Space</title>
 <link rel="icon" href="logo/icon.svg" type="image/svg+xml">
 <link rel="icon" href="logo/icon-32.png" sizes="32x32" type="image/png">
-<link rel="apple-touch-icon" href="logo/icon-192.png">
+<link rel="apple-touch-icon" href="logo/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Inventory Space">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#14232B">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -255,7 +260,7 @@ const SECTIONS = [
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"]]],
   ["stock", "Stock", [["stock", "On hand"], ["count", "Count by weight"], ["detect", "Count by camera"], ["identify", "Identify one"], ["history", "History"]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"], ["logo", "Logo"]]],
+  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"]]],
 ];
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
@@ -270,9 +275,24 @@ const ICON = {
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] || ""}</svg>`;
 state.tab = "home"; state.lastTab = {};
-try { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } catch (e) {}
+try { const go = new URLSearchParams(location.search).get("go"); if (go && SECTIONS.some(s => s[2].some(([k]) => k === go))) { state.tab = go; localStorage.setItem("ts_tab", go); } else { const t = localStorage.getItem("ts_tab"); if (t && SECTIONS.some(s => s[2].some(([k]) => k === t))) state.tab = t; } } catch (e) {}
 const devId = () => state.tab === "count" ? SCALES.count : SCALES.tools;
 let sb = null, pollFast = null, pollSlow = null, pollTick = null, pollWatch = null;
+
+/* ---------- install as an app ---------- */
+const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function paintInstall() { const b = $("#installbtn"); if (b) b.hidden = standalone() || !(state.installEv || isIOS()); }
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); state.installEv = e; paintInstall(); });
+window.addEventListener("appinstalled", () => { state.installEv = null; paintInstall(); toast("Installed. Open Inventory Space from your home screen or app list."); });
+async function installApp() {
+  if (state.installEv) { const e = state.installEv; state.installEv = null; e.prompt(); await e.userChoice.catch(() => {}); paintInstall(); return; }
+  const d = $("#dlg");
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Install Inventory Space</h2></div><div class="dlg-b"><p style="margin:0">Add it to your home screen so it opens like an app, full screen, with its own icon.</p>
+    <ol style="margin:0;padding-left:20px;display:grid;gap:6px"><li>Open this page in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow).</li><li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li></ol></div><div class="dlg-f"><button type="submit" class="btn">Got it</button></div></form>`;
+  d.showModal();
+}
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 
 /* ---------- helpers ---------- */
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 4500); }
@@ -397,6 +417,7 @@ function startApp() {
     <button class="brand" id="brand" title="Home"><img src="logo/icon.svg" alt="" width="30" height="30" style="vertical-align:-6px;margin-right:8px">Inventory Space</button>
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
+    <button class="linkbtn" id="installbtn" style="font-size:14px" hidden>Install app</button>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
   <nav class="tabs" aria-label="Sections">${SECTIONS.map(([k, l]) => `<button class="tab" data-sec="${k}">${icon(k)}<span>${l}</span><span class="bd"></span></button>`).join("")}</nav>
@@ -405,6 +426,7 @@ function startApp() {
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec); setTab(state.lastTab[s[0]] || s[2][0][0]); });
   $("#brand").onclick = () => setTab("home");
+  $("#installbtn").onclick = installApp; paintInstall();
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
@@ -455,7 +477,7 @@ function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, logo: renderLogo })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -639,15 +661,6 @@ function roomOfUnit(u) {
   const sw = Number(u.rot) % 180 !== 0, cx = Number(u.x) + (sw ? u.d : u.w) / 2, cz = Number(u.z) + (sw ? u.w : u.d) / 2;
   const inside = pts => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
   return (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points)) || null;
-}
-
-/* ---------- logo downloads ---------- */
-function renderLogo() {
-  const files = [["Icon (SVG, scales to any size)", "icon.svg", "#14232B"], ["Icon 512 px", "icon-512.png", "#E4E9EB"], ["Icon 192 px", "icon-192.png", "#E4E9EB"], ["Icon 32 px (browser tab)", "icon-32.png", "#E4E9EB"],
-    ["Logo with name, dark text (SVG)", "logo-dark-text.svg", "#FFFFFF"], ["Logo with name, dark text (PNG)", "logo-dark-text.png", "#FFFFFF"], ["Logo with name, on white (PNG)", "logo-on-white.png", "#FFFFFF"], ["Logo with name, white text (SVG, for dark backgrounds)", "logo-white-text.svg", "#14232B"], ["Logo with name, white text (PNG)", "logo-white-text.png", "#14232B"]];
-  $("#main").innerHTML = `<div class="summary"><div><h1>Logo</h1><p>The Inventory Space logo: a stack of shelves with a marker for finding things. Download what you need for slides, emails, signs or a phone home-screen icon.</p></div></div>
-  <div class="cards4">${files.map(([t, f, bg]) => `<div class="acard"><div style="background:${bg};padding:12px;display:flex;justify-content:center;align-items:center;height:110px"><img src="logo/${f}" alt="" style="max-width:100%;max-height:86px"></div><p><strong>${t}</strong></p><a class="btn sec" href="logo/${f}" download="inventory-space-${f}" style="text-decoration:none;display:inline-block">Download</a></div>`).join("")}</div>
-  <section class="block"><h2>Colours</h2><div class="row">${[["Ink", "#14232B"], ["Steel", "#24607A"], ["Hi-vis yellow", "#F2C200"], ["Paper", "#E4E9EB"]].map(([n, c]) => `<div style="display:flex;gap:8px;align-items:center"><span style="width:36px;height:36px;background:${c};border:1px solid var(--line)"></span><span><strong>${n}</strong><br><span class="hint">${c}</span></span></div>`).join("")}</div></section>`;
 }
 
 /* ---------- board ---------- */

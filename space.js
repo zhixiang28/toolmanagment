@@ -19,7 +19,7 @@
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
   const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
-  const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.cols = r.cols == null ? null : Number(r.cols); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
+  const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.cols = r.cols == null ? null : Number(r.cols); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); r.at_left = r.at_left == null ? null : Number(r.at_left); r.lvh = Array.isArray(r.lvh) ? r.lvh.map(Number) : null; if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
   const unit = id => S.units.find(u => u.id === id), room = id => S.rooms.find(r => r.id === id);
   /* which way is "right along the front" (R) and "towards the back" (F) for each way a unit can face */
@@ -49,19 +49,30 @@
     for (const u of units) { const f = fp(u), c = rp(f.x + f.w / 2, f.z + f.d / 2); u.rot = (u.rot + (dir > 0 ? 90 : 270)) % 360; const g = fp(u); u.x = r2(c[0] - g.w / 2); u.z = r2(c[1] - g.d / 2); }
   }   // boxes on a rack live inside the rack, not on the floor plan
   /* boxes sit on a rack level in the order they were added, left to right */
+  /* level heights of a unit: its own list when it fits, else equal levels. A list that no longer adds up to the height is scaled to fit */
+  const lvs = u => { const n = Math.max(1, u.levels || 1), a = Array.isArray(u.lvh) ? u.lvh.map(Number) : null; if (a && a.length === n && a.every(v => v > 0)) { const t = a.reduce((x, y) => x + y, 0); return Math.abs(t - u.h) < 0.001 ? a : a.map(v => v * u.h / t); } return Array(n).fill(u.h / n); };
+  const lvBase = (u, L) => (u.elev || 0) + lvs(u).slice(0, L - 1).reduce((x, y) => x + y, 0);
+  /* left edges of boxes side by side: a box with a set position keeps it, the others fill from the left and step over those */
+  const lefts = (list, start, gap) => {
+    const man = list.filter(c => c.at_left != null).map(c => [Number(c.at_left), Number(c.at_left) + c.w]), m = new Map(); let a = start;
+    for (const c of list) { if (c.at_left != null) { m.set(c.id, Number(c.at_left)); continue; } for (let moved = true; moved;) { moved = false; for (const [s0, e0] of man) if (a < e0 - 0.001 && a + c.w > s0 + 0.001) { a = e0 + gap; moved = true; } } m.set(c.id, a); a += c.w + gap; }
+    return m;
+  };
   function boxLayout(r) {   // every box on a rack, including boxes stacked on other boxes
-    const f = fp(r), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[r.rot] || DIR[0], lh = r.h / r.levels, T = 0.03, acc = {}, out = [], alongX = D.R[0] !== 0;
+    const f = fp(r), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[r.rot] || DIR[0], hs = lvs(r), T = 0.03, out = [], alongX = D.R[0] !== 0, lvTop = L => lvBase(r, L) + hs[L - 1];
     const stack = (pe, depth) => {
-      if (depth > 8) return; let a = 0;
-      for (const c of kids(pe.b)) {
-        const left = a, along = -pe.b.w / 2 + left + c.w / 2, y = pe.y + pe.h; a += c.w + 0.01;
-        const e = { b: c, L: pe.L, left, depth, parentId: pe.b.id, cx: pe.cx + D.R[0] * along, cz: pe.cz + D.R[1] * along, y, wx: alongX ? c.w : c.d, wz: alongX ? c.d : c.w, h: c.h, over: left + c.w > pe.b.w + 0.001 || c.d > pe.b.d + 0.001 || y + c.h > r.elev + pe.L * lh + 0.001 };
+      if (depth > 8) return; const list = kids(pe.b), lf = lefts(list, 0, 0.01);
+      for (const c of list) {
+        const left = lf.get(c.id), along = -pe.b.w / 2 + left + c.w / 2, y = pe.y + pe.h;
+        const e = { b: c, L: pe.L, left, depth, parentId: pe.b.id, cx: pe.cx + D.R[0] * along, cz: pe.cz + D.R[1] * along, y, wx: alongX ? c.w : c.d, wz: alongX ? c.d : c.w, h: c.h, over: left + c.w > pe.b.w + 0.001 || left < -0.001 || c.d > pe.b.d + 0.001 || y + c.h > lvTop(pe.L) + 0.001 };
         out.push(e); stack(e, depth + 1);
       }
     };
-    for (const b of kids(r)) {
-      const L = clamp(b.parent_level || 1, 1, r.levels); acc[L] = acc[L] ?? 0.02; const left = acc[L], along = -r.w / 2 + left + b.w / 2, y = r.elev + (L - 1) * lh + T; acc[L] += b.w + 0.02;
-      const e = { b, L, left, depth: 0, parentId: r.id, cx: cx + D.R[0] * along, cz: cz + D.R[1] * along, y, wx: alongX ? b.w : b.d, wz: alongX ? b.d : b.w, h: b.h, over: left + b.w > r.w + 0.001 || b.d > r.d + 0.001 || y + b.h > r.elev + L * lh + 0.001 };
+    const list = kids(r), byL = {}; list.forEach(b => { const L = clamp(b.parent_level || 1, 1, r.levels); (byL[L] = byL[L] || []).push(b); });
+    const lf = {}; Object.keys(byL).forEach(L => { lf[L] = lefts(byL[L], 0.02, 0.02); });
+    for (const b of list) {
+      const L = clamp(b.parent_level || 1, 1, r.levels), left = lf[L].get(b.id), along = -r.w / 2 + left + b.w / 2, y = lvBase(r, L) + T;
+      const e = { b, L, left, depth: 0, parentId: r.id, cx: cx + D.R[0] * along, cz: cz + D.R[1] * along, y, wx: alongX ? b.w : b.d, wz: alongX ? b.d : b.w, h: b.h, over: left + b.w > r.w + 0.001 || left < -0.001 || b.d > r.d + 0.001 || y + b.h > lvTop(L) + 0.001 };
       out.push(e); stack(e, 1);
     }
     return out;
@@ -110,7 +121,7 @@
     if (S.sel && !(S.sel.kind === "unit" ? unit(S.sel.id) : room(S.sel.id))) S.sel = null;
   }
   const saveRoom = r => guard(rpcAuth("toolscale_space_room_poly", { p_id: r.id || null, p_name: r.name, p_points: r.points.map(p => [r2(p[0]), r2(p[1])]), p_h: r2(r.h) }));
-  const saveUnit = u => { const rm = roomOf(u); if (u.parent_id) { const rt = rootOf(u); u.x = rt.x; u.z = rt.z; } return guard(rpcAuth("toolscale_space_unit_v3", { p_cols: u.cols || null, p_id: u.id || null, p_room: rm ? rm.id : null, p_kind: u.kind, p_name: u.name, p_x: r2(u.x), p_z: r2(u.z), p_w: r2(u.w), p_d: r2(u.d), p_h: r2(u.h), p_rot: u.rot, p_levels: u.levels, p_color: u.color || null, p_elev: r2(u.elev || 0), p_parent: u.parent_id || null, p_plevel: u.parent_id ? (u.parent_level || 1) : null })); };
+  const saveUnit = u => { const rm = roomOf(u); if (u.parent_id) { const rt = rootOf(u); u.x = rt.x; u.z = rt.z; } return guard(rpcAuth("toolscale_space_unit_v4", { p_cols: u.cols || null, p_lvh: u.lvh && u.levels > 1 && u.kind !== "box" ? lvs(u).map(r2) : null, p_at_left: u.parent_id && u.at_left != null ? r2(u.at_left) : null, p_id: u.id || null, p_room: rm ? rm.id : null, p_kind: u.kind, p_name: u.name, p_x: r2(u.x), p_z: r2(u.z), p_w: r2(u.w), p_d: r2(u.d), p_h: r2(u.h), p_rot: u.rot, p_levels: u.levels, p_color: u.color || null, p_elev: r2(u.elev || 0), p_parent: u.parent_id || null, p_plevel: u.parent_id ? (u.parent_level || 1) : null })); };
   /* edits save a moment after the last change, so dragging a slider or typing a size does not send a request on every keystroke */
   const saveMany = us => Promise.all(us.filter(Boolean).map(u => saveUnit(u)));
   function scheduleSave(u) { clearTimeout(S.saveT); S.pending = u; S.saveT = setTimeout(flushSave, 600); }
@@ -482,8 +493,15 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   function ehandles(u) {
     const V = EV(), e = aext(fp(u)), hh = hext(e[0], e[1]), L = esx(hh[0]), R = esx(hh[1]), xm = (L + R) / 2, yT = esy((u.elev || 0) + u.h), yB = esy(u.elev || 0), ym = (yT + yB) / 2;
-    const hs = [["min", V.sign > 0 ? L : R, ym], ["max", V.sign > 0 ? R : L, ym], ["t", xm, yT]]; if (!isTable(u) && u.kind !== "rack") hs.push(["b", xm, yB]); return hs;
+    const hs = [["min", V.sign > 0 ? L : R, ym], ["max", V.sign > 0 ? R : L, ym], ["t", xm, yT]]; if (!isTable(u) && u.kind !== "rack") hs.push(["b", xm, yB]);
+    if (u.levels > 1 && !isTable(u) && u.kind !== "box") for (let i = 1; i < u.levels; i++) hs.push(["lv" + i, xm + Math.min(30, (R - L) / 4), esy(lvBase(u, i + 1))]);   // drag a shelf line to change the height of the levels either side
+    return hs;
   }
+  function bhandles(b) {   // a box seen from the front: both sides and the top
+    const e = boxLayout(rootOf(b)).find(x => x.b.id === b.id); if (!e) return []; const s = boxSpan(e), hh = hext(s[0], s[1]), yT = esy(e.y + e.h), ym = esy(e.y + e.h / 2);
+    return [["xl", esx(hh[0]), ym], ["xr", esx(hh[1]), ym], ["xt", (esx(hh[0]) + esx(hh[1])) / 2, yT]];
+  }
+  function within(b, anc) { for (let p = parentOf(b), n = 0; p && n < 12; p = parentOf(p), n++) if (p.id === anc) return true; return false; }
   function drawElev(g, u, sel) {
     const E = S.ev, f = fp(u), e = aext(f), hh = hext(e[0], e[1]), x = esx(hh[0]), w = (hh[1] - hh[0]) * E.ppm, yT = esy((u.elev || 0) + u.h), yB = esy(u.elev || 0), col = colorOf(u), lt = light(col), ink = lt ? "#14232B" : "#fff";
     g.lineWidth = 1.5; g.strokeStyle = "#14232B"; g.textBaseline = "middle";
@@ -492,15 +510,16 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       g.fillRect(x + 3, yT + t, lw, yB - yT - t); g.fillRect(x + w - 3 - lw, yT + t, lw, yB - yT - t); g.strokeRect(x + 3, yT + t, lw, yB - yT - t); g.strokeRect(x + w - 3 - lw, yT + t, lw, yB - yT - t);
       for (const e of assetLayout(u)) { const sp = boxSpan(e), ah = hext(sp[0], sp[1]), ax = esx(ah[0]), aw = (ah[1] - ah[0]) * E.ppm, ay = esy(e.y + e.h), ahh = e.h * E.ppm, ac = assetCol(e.a); g.fillStyle = ac; g.fillRect(ax, ay, aw, ahh); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = 1.2; g.strokeRect(ax, ay, aw, ahh); if (aw > 34 && ahh > 11) { g.save(); g.beginPath(); g.rect(ax, ay, aw, ahh); g.clip(); g.fillStyle = light(ac) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(e.a.name, ax + 3, ay + ahh / 2); g.restore(); } }
     } else if (u.kind === "rack") {
-      const L = u.levels, lh = (yB - yT) / L, T = Math.max(3, 0.03 * E.ppm); g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x, yT, w, yB - yT); g.fillStyle = col;
-      for (let i = 0; i <= L; i++) g.fillRect(x, i === L ? yT : yB - lh * i - T, w, T); g.fillRect(x, yT, 4, yB - yT); g.fillRect(x + w - 4, yT, 4, yB - yT);
+      const L = u.levels, hs = lvs(u), T = Math.max(3, 0.03 * E.ppm); g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x, yT, w, yB - yT); g.fillStyle = col;
+      for (let i = 0; i <= L; i++) g.fillRect(x, i === L ? yT : esy(lvBase(u, i + 1)) - T, w, T); g.fillRect(x, yT, 4, yB - yT); g.fillRect(x + w - 4, yT, 4, yB - yT);
       for (const b of boxLayout(u)) { const s = boxSpan(b), bh = hext(s[0], s[1]), bx = esx(bh[0]), bw = (bh[1] - bh[0]) * E.ppm, by = esy(b.y + b.h), bhei = b.h * E.ppm, sb = S.sel && S.sel.id === b.b.id; g.fillStyle = colorOf(b.b); g.fillRect(bx, by, bw, bhei); g.strokeStyle = sb ? "#F2C200" : b.over ? "#B83A26" : "#14232B"; g.lineWidth = sb ? 3 : 1; g.strokeRect(bx, by, bw, bhei); if (bw > 30) { g.save(); g.beginPath(); g.rect(bx, by, bw, bhei); g.clip(); g.fillStyle = light(colorOf(b.b)) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textAlign = "left"; g.fillText(b.b.name, bx + 3, by + bhei / 2); g.restore(); } }
-      g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x, yT, w, yB - yT); g.fillStyle = "#14232B"; g.font = "600 10px sans-serif"; g.textAlign = "left"; for (let i = 0; i < L; i++) if (lh > 14) g.fillText(String(i + 1), x + 6, yB - lh * (i + 0.5));
+      g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x, yT, w, yB - yT); g.fillStyle = "#14232B"; g.font = "600 10px sans-serif"; g.textAlign = "left"; for (let i = 0; i < L; i++) if (hs[i] * E.ppm > 14) g.fillText(String(i + 1), x + 6, esy(lvBase(u, i + 1) + hs[i] / 2));
     } else {
       g.globalAlpha = .96; g.fillStyle = col; g.fillRect(x, yT, w, yB - yT); g.globalAlpha = 1; g.strokeRect(x, yT, w, yB - yT);
       const L = u.kind === "bench" || u.kind === "box" ? 1 : u.levels; g.strokeStyle = lt ? "rgba(20,35,43,.55)" : "rgba(255,255,255,.75)"; g.fillStyle = ink; g.font = "600 10px sans-serif"; g.lineWidth = 1;
+      const hs2 = lvs(u);
       for (let i = 0; i < L; i++) {
-        const yb2 = yB - (yB - yT) * i / L, yt2 = yB - (yB - yT) * (i + 1) / L; if (i) { g.beginPath(); g.moveTo(x + 2, yb2); g.lineTo(x + w - 2, yb2); g.stroke(); }
+        const yb2 = L > 1 ? esy(lvBase(u, i + 1)) : yB, yt2 = L > 1 ? esy(lvBase(u, i + 1) + hs2[i]) : yT; if (i) { g.beginPath(); g.moveTo(x + 2, yb2); g.lineTo(x + w - 2, yb2); g.stroke(); }
         if (L > 1 && (yb2 - yt2) > 14) { g.textAlign = "left"; g.fillText(String(i + 1), x + 5, (yb2 + yt2) / 2); const n = itemsAt(u.id, i + 1).length; if (n && w > 40) { g.textAlign = "right"; g.fillText(w > 90 ? n + " item" + (n > 1 ? "s" : "") : String(n), x + w - 5, (yb2 + yt2) / 2); } }
       }
     }
@@ -509,7 +528,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.setLineDash([]); g.strokeRect(x - 1, yT - 1, w + 2, yB - yT + 2);
       dimLabel(g, cm(e[1] - e[0]) + " cm", x + w / 2, yT - 14, false); dimLabel(g, cm(u.h) + " cm", x + w + 16, (yT + yB) / 2, true);
       if (u.elev > 0 && !isTable(u)) dimLabel(g, "↑ " + cm(u.elev) + " cm", x + w / 2, yB + 14, false);
-      if (state.user) ehandles(u).forEach(([k, hx, hy]) => { g.fillStyle = "#F2C200"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.beginPath(); if (k === "t" || k === "b") g.rect(hx - 7, hy - 7, 14, 14); else g.arc(hx, hy, 7, 0, 7); g.fill(); g.stroke(); });
+      if (state.user) ehandles(u).forEach(([k, hx, hy]) => { g.fillStyle = "#F2C200"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.beginPath(); if (k === "t" || k === "b") g.rect(hx - 7, hy - 7, 14, 14); else if (k.startsWith("lv")) g.rect(hx - 13, hy - 4, 26, 8); else g.arc(hx, hy, 7, 0, 7); g.fill(); g.stroke(); });
     }
   }
   function drawFront() {
@@ -528,7 +547,19 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     normSel(); for (const u of order) { const sel = inGroup(u.id); if (sel && S.multi.length <= 1) selU = u; if (!(sel && S.multi.length <= 1)) drawElev(g, u, false); }
     if (selU) drawElev(g, selU, true);
     if (S.multi.length > 1) group().forEach(u => { const e = aext(fp(u)), hh = hext(e[0], e[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.strokeRect(esx(hh[0]) - 1, esy((u.elev || 0) + u.h) - 1, (hh[1] - hh[0]) * S.ev.ppm + 2, u.h * S.ev.ppm + 2); });
-    if (S.sel && S.sel.kind === "unit" && parentOf(unit(S.sel.id) || {})) { const b = unit(S.sel.id), p = parentOf(b), e = boxLayout(p).find(x => x.b.id === b.id); if (e) { const s = boxSpan(e), bh = hext(s[0], s[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.strokeRect(esx(bh[0]) - 1, esy(e.y + e.h) - 1, (bh[1] - bh[0]) * E.ppm + 2, e.h * E.ppm + 2); } }
+    if (S.sel && S.sel.kind === "unit" && parentOf(unit(S.sel.id) || {})) {
+      const b = unit(S.sel.id), e = boxLayout(rootOf(b)).find(x => x.b.id === b.id);
+      if (e) { const s = boxSpan(e), bh = hext(s[0], s[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.setLineDash([]); g.strokeRect(esx(bh[0]) - 1, esy(e.y + e.h) - 1, (bh[1] - bh[0]) * E.ppm + 2, e.h * E.ppm + 2);
+        dimLabel(g, cm(b.w) + " cm", (esx(bh[0]) + esx(bh[1])) / 2, esy(e.y + e.h) - 14, false);
+        if (state.user) bhandles(b).forEach(([k, hx, hy]) => { g.fillStyle = "#F2C200"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.beginPath(); if (k === "xt") g.rect(hx - 7, hy - 7, 14, 14); else g.arc(hx, hy, 7, 0, 7); g.fill(); g.stroke(); }); }
+    }
+    if (S.drop) {   // where a dragged box will land
+      const d0 = S.drop; g.save(); g.setLineDash([6, 4]); g.lineWidth = 3; g.strokeStyle = "#1E8E5A"; g.fillStyle = "rgba(30,142,90,.14)";
+      if (d0.kind === "box") { const s = boxSpan(d0.e), bh = hext(s[0], s[1]), bx = esx(bh[0]), by = esy(d0.e.y + d0.e.h), bw = (bh[1] - bh[0]) * E.ppm; g.strokeRect(bx - 2, by - 2, bw + 4, d0.e.h * E.ppm + 4); g.fillRect(bx, by - 12, bw, 12); g.strokeRect(bx, by - 12, bw, 12); }
+      else { const r = d0.p, hh = hext(...aext(fp(r))), bx = esx(hh[0]), bw = (hh[1] - hh[0]) * E.ppm, y0 = esy(lvBase(r, d0.L)), y1 = esy(lvBase(r, d0.L) + lvs(r)[d0.L - 1]); g.fillRect(bx, y1, bw, y0 - y1); g.strokeRect(bx, y1, bw, y0 - y1); }
+      g.restore();
+    }
+    if (S.ghost) { const gh = S.ghost, b = unit(gh.id); if (b) { g.save(); g.globalAlpha = .7; g.fillStyle = colorOf(b); g.fillRect(gh.px - gh.w / 2, gh.py - gh.h / 2, gh.w, gh.h); g.globalAlpha = 1; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.strokeRect(gh.px - gh.w / 2, gh.py - gh.h / 2, gh.w, gh.h); g.restore(); } }
     if (S.eg) { g.save(); g.strokeStyle = "#D9822B"; g.lineWidth = 1; g.setLineDash([6, 4]); S.eg.h.forEach(h => { g.beginPath(); g.moveTo(esx(h), 0); g.lineTo(esx(h), H); g.stroke(); }); S.eg.y.forEach(y => { g.beginPath(); g.moveTo(0, esy(y)); g.lineTo(W, esy(y)); g.stroke(); }); g.restore(); }
   }
   function snapAxisLines(skipId) { const V = EV(), out = []; tops().forEach(o => { if (o.id === skipId || (Array.isArray(skipId) && skipId.includes(o.id))) return; const e = aext(fp(o)); out.push(e[0], e[1]); }); S.rooms.forEach(r => r.points.forEach(q => out.push(V.axis === "x" ? q[0] : q[1]))); return out; }
@@ -542,25 +573,49 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       for (const r of tops().filter(u => u.kind === "rack")) for (const b of boxLayout(r)) { const s = boxSpan(b), hh = hext(s[0], s[1]); if (w.h >= hh[0] && w.h <= hh[1] && w.y >= b.y && w.y <= b.y + b.h) out.push(b.b); }
       return [...out, ...tops().filter(u => { const hh = hext(...aext(fp(u))); return w.h >= hh[0] && w.h <= hh[1] && w.y >= (u.elev || 0) && w.y <= (u.elev || 0) + u.h; }).sort((a, b) => edepth(b) - edepth(a))];
     };
-    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u) || S.multi.length > 1) return null; const hit = ehandles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
+    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || S.multi.length > 1) return null; const hit = (parentOf(u) ? bhandles(u) : ehandles(u)).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
+    /* a box placed from where the pointer is: onto the box under it (stacking), else into the rack level under it */
+    const dropAt = (w, b) => {
+      const racks = tops().filter(x => x.kind === "rack"), hitB = [];
+      for (const r of racks) for (const e of boxLayout(r)) { if (e.b.id === b.id || within(e.b, b.id)) continue; const s = boxSpan(e), hh = hext(s[0], s[1]); if (w.h >= hh[0] && w.h <= hh[1] && w.y >= e.y && w.y <= e.y + e.h) hitB.push({ kind: "box", p: e.b, r, e }); }
+      if (hitB.length) return hitB.sort((a, c) => c.e.depth - a.e.depth)[0];
+      for (const r of racks) { const hh = hext(...aext(fp(r))); if (w.h < hh[0] || w.h > hh[1] || w.y < (r.elev || 0) || w.y > (r.elev || 0) + r.h) continue; const hs = lvs(r); let L = r.levels; for (let i = 1; i <= r.levels; i++) if (w.y < lvBase(r, i) + hs[i - 1]) { L = i; break; } return { kind: "level", p: r, r, L }; }
+      return null;
+    };
     const needSignIn = () => { if (!state.user) { toast("Sign in to change things."); return true; } return false; };
     cv.onpointerdown = e => {
       const w = pt(e); cv.setPointerCapture(e.pointerId);
-      const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: "eresize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, moved: false }; return; }
+      const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: parentOf(hh.u) ? "bresize" : "eresize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, hs0: lvs(hh.u), moved: false }; return; }
       const hits = hitsE(w);
       if ((e.shiftKey || e.ctrlKey || e.metaKey) && hits.some(h => !parentOf(h))) { flushSave(); const cur = group().map(x => x.id), t = hits.find(h => !parentOf(h)); setMulti(cur.includes(t.id) ? cur.filter(i => i !== t.id) : [...cur, t.id]); paintProps(); draw(); S.drag = { kind: "tap0" }; return; }
-      const u = hits.find(h => inGroup(h.id)) || hits[0];
+      const u = (hits[0] && parentOf(hits[0]) && !(S.multi.length > 1 && inGroup(rootOf(hits[0]).id)) ? hits[0] : null) || hits.find(h => inGroup(h.id)) || hits[0];   // a box on a selected rack is picked itself
       if (u) {
         const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw();
+        if (parentOf(u) && state.user && !multi) { S.drag = { kind: "bmove", id: u.id, orig: { ...u }, px: w.px, py: w.py, moved: false, hits: hits.map(h => h.id), was }; return; }
         if (parentOf(u) || needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; }
         const e0 = aext(fp(u)); S.drag = { kind: "emove", id: u.id, a: V().sign * w.h, a0: e0[0], ext: e0[1] - e0[0], y: w.y, e0: u.elev || 0, canLift: !isTable(u) && u.kind !== "rack", orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return;
       }
       flushSave(); S.multi = []; S.sel = null; paintProps(); draw(); S.drag = { kind: "epan", px: w.px, py: w.py, h0: E().h0, base: E().base };
     };
     cv.onpointermove = e => {
-      const w = pt(e), d = S.drag, Ev = E(); if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "min" || hh.edge === "max" ? "ew-resize" : "ns-resize"; return; }
+      const w = pt(e), d = S.drag, Ev = E(); if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "min" || hh.edge === "max" || hh.edge === "xl" || hh.edge === "xr" ? "ew-resize" : "ns-resize"; return; }
       if (d.kind === "epan") { Ev.h0 = d.h0 - (w.px - d.px) / Ev.ppm; Ev.base = d.base + (w.py - d.py); drawFront(); return; }
       if (d.kind === "tap0") return;
+      if (d.kind === "bmove") {
+        const b = unit(d.id); if (!b) return; if (!d.moved && Math.hypot(w.px - d.px, w.py - d.py) < 6) return; d.moved = true;
+        const e0 = boxLayout(rootOf(b)).find(x => x.b.id === b.id), s0 = e0 && boxSpan(e0), hh0 = s0 && hext(s0[0], s0[1]);
+        S.ghost = { id: b.id, px: w.px, py: w.py, w: hh0 ? (hh0[1] - hh0[0]) * Ev.ppm : 40, h: e0 ? e0.h * Ev.ppm : 20 }; S.drop = dropAt(w, b); cv.style.cursor = S.drop ? "copy" : "not-allowed"; drawFront(); return;
+      }
+      if (d.kind === "bresize") {
+        const b = unit(d.id); if (!b) return; const e = boxLayout(rootOf(b)).find(x => x.b.id === b.id), pe = parentOf(b); if (!e || !pe) return;
+        const pl = pe.kind === "rack" ? null : boxLayout(rootOf(b)).find(x => x.b.id === pe.id), R = DIR[rootOf(b).rot] || DIR[0], ai = V().axis === "x" ? 0 : 1, r = R.R[ai], a = V().sign * w.h, ed = d.edge;
+        if (ed === "xt") b.h = Math.max(0.05, r2(snapTo(w.y, 0.01) - e.y));
+        else if (r !== 0) {   // the box runs along the view: its width, measured from the left edge of what it sits on
+          const pc = pe.kind === "rack" ? (ai === 0 ? fp(pe).x + fp(pe).w / 2 : fp(pe).z + fp(pe).d / 2) : (ai === 0 ? pl.cx : pl.cz), t = snapTo((a - pc) * r + pe.w / 2, 0.01), low = (ed === "xl") === (V().sign * r > 0), left0 = e.left, w0 = d.orig.w;
+          if (low) { const nl = clamp(t, 0, left0 + w0 - 0.05); b.at_left = r2(nl); b.w = r2(left0 + w0 - nl); } else b.w = Math.max(0.05, r2(t - left0));
+        } else { const bc = ai === 0 ? e.cx : e.cz; b.d = Math.max(0.05, r2(snapTo(2 * Math.abs(a - bc), 0.01))); }
+        d.moved = true; draw(); paintSizeInputs(b); return;
+      }
       const u = unit(d.id); if (!u) return; const thr = 8 / Ev.ppm, gh = [], gy = [], a = V().sign * w.h, alt = e.altKey, x = V().axis === "x";
       if (d.kind === "emove") {
         const lines = snapAxisLines(d.grp ? d.grp.map(g0 => g0.id) : u.id); let a0 = snapTo(d.a0 + (a - d.a), 0.05);
@@ -576,7 +631,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
           if (x) { if (ed === "min") { const nx = Math.min(v, F.x + F.w - 0.1); F.w = F.x + F.w - nx; F.x = nx; } else F.w = Math.max(0.1, v - F.x); }
           else { if (ed === "min") { const nz = Math.min(v, F.z + F.d - 0.1); F.d = F.z + F.d - nz; F.z = nz; } else F.d = Math.max(0.1, v - F.z); }
           setFootprint(u, F);
-        } else if (ed === "t") { let y = snapTo(w.y, 0.05); if (!alt) { const s = snapV(y, snapYLines(u.id), gy, thr); if (s != null) y = s; } u.h = Math.max(0.1, r2(y - (u.elev || 0))); }
+        } else if (ed.startsWith("lv")) {   // a shelf line: the two levels either side share the same total
+          const i = Number(ed.slice(2)), hs = d.hs0.slice(), base = (d.orig.elev || 0) + hs.slice(0, i - 1).reduce((x, y) => x + y, 0), pair = hs[i - 1] + hs[i], hi = clamp(snapTo(w.y - base, 0.01), 0.05, pair - 0.05);
+          hs[i - 1] = r2(hi); hs[i] = r2(pair - hi); u.lvh = hs; gy.push(base + hi);
+        } else if (ed === "t") {
+          let y = snapTo(w.y, 0.05); if (!alt) { const s = snapV(y, snapYLines(u.id), gy, thr); if (s != null) y = s; } let nh = Math.max(0.1, r2(y - (u.elev || 0)));
+          if (d.orig.lvh && u.levels > 1) { const hs = d.hs0.slice(), last = hs.length - 1, dl = nh - d.orig.h; if (hs[last] + dl < 0.05) nh = r2(d.orig.h + 0.05 - hs[last]); hs[last] = r2(Math.max(0.05, hs[last] + nh - d.orig.h)); u.lvh = hs; }
+          u.h = nh;
+        }
         else if (ed === "b") { const top = d.orig.elev + d.orig.h; let y = clamp(snapTo(w.y, 0.05), 0, top - 0.1); if (!alt) { const s = snapV(y, snapYLines(u.id), gy, thr); if (s != null) y = clamp(s, 0, top - 0.1); } u.elev = r2(y); u.h = r2(top - y); }
         d.moved = true;
       }
@@ -585,6 +647,18 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const up = async e => {
       S.eg = null; const d = S.drag; S.drag = null; if (!d) { draw(); return; }
       if (d.kind === "tap0") { draw(); return; }
+      if (d.kind === "bmove") {
+        const drop = S.drop; S.ghost = null; S.drop = null; cv.style.cursor = "default";
+        if (!d.moved) { if (d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); } draw(); return; }
+        const b = unit(d.id); if (!b || !drop) { draw(); toast("Drop the box on a rack level or on another box."); return; }
+        const w = pt(e), ai = V().axis === "x" ? 0 : 1, R = DIR[drop.r.rot] || DIR[0], r = R.R[ai];
+        snapUnit(d.orig); b.parent_id = drop.p.id; b.parent_level = drop.kind === "box" ? 1 : drop.L;
+        if (r !== 0) { const fr = fp(drop.r), pc = drop.kind === "box" ? (ai === 0 ? drop.e.cx : drop.e.cz) : (ai === 0 ? fr.x + fr.w / 2 : fr.z + fr.d / 2), t = (V().sign * w.h - pc) * r + drop.p.w / 2; b.at_left = r2(clamp(snapTo(t - b.w / 2, 0.01), 0, Math.max(0, drop.p.w - b.w))); } else b.at_left = null;
+        try { await saveUnit(b); S.sel = { kind: "unit", id: b.id }; toast(drop.kind === "box" ? "Stacked on " + drop.p.name : "Moved to level " + drop.L + " of " + drop.p.name); paintProps(); }
+        catch (err) { Object.assign(b, d.orig); S.undo.pop(); paintUndo(); }
+        draw(); return;
+      }
+      if (d.kind === "bresize") { if (d.moved) { const b = unit(d.id); snapUnit(d.orig); try { await saveUnit(b); paintProps(); } catch (err) { Object.assign(b, d.orig); S.undo.pop(); paintUndo(); } } draw(); return; }
       if (d.kind === "tap" && d.multi) { setMulti([d.id]); paintProps(); draw(); return; }
       if (d.kind === "emove" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
       if ((d.kind === "tap" || (d.kind === "emove" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // click the same spot again to pick what is behind
@@ -679,7 +753,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function finishPoly() {
     if (S.draft.length < 3) return; const pts = S.draft.slice(); S.draft = []; S.hover = null; roomDialog(null, pts);
   }
-  function paintSizeInputs(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uW", cm(u.w)); s("uD", cm(u.d)); s("uH", cm(u.h)); s("uE", cm(u.elev || 0)); paintPos(u); paintInfo(); }
+  function paintSizeInputs(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uW", cm(u.w)); s("uD", cm(u.d)); s("uH", cm(u.h)); s("uE", cm(u.elev || 0)); if (u.kind !== "box") lvs(u).forEach((v, i) => s("lvH" + i, cm(v))); paintPos(u); paintInfo(); }
   function paintPos(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uX", r2(u.x)); s("uZ", r2(u.z)); }
   function paintInfo() {
     const el = $("#sInfo"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
@@ -727,7 +801,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         <div class="field" style="min-width:70px"><label for="uH">${desk ? "Top height" : "Height"} (cm)</label><input id="uH" type="number" step="5" min="10" max="1000" value="${cm(u.h)}"></div></div>
       <div style="margin-top:8px"><label for="uPre">Common sizes</label><select id="uPre" class="sel"><option value="">Pick a size...</option>${(PRESETS[u.kind] || []).map(p => `<option value="${p.join(",")}">${p[0]} × ${p[1]} × ${p[2]} cm</option>`).join("")}</select></div>
       <p class="hint">Width is across the front. You can also drag the yellow dots in either view.</p>`;
-    const levelsHtml = `<div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div>`;
+    const levelsHtml = `<div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div>
+      <div id="lvHts"></div>`;
     const posHtml = `<div class="row"><div class="field" style="min-width:70px"><label for="uX">Left edge (m)</label><input id="uX" type="number" step="0.05" value="${r2(u.x)}"></div><div class="field" style="min-width:70px"><label for="uZ">Top edge (m)</label><input id="uZ" type="number" step="0.05" value="${r2(u.z)}"></div>
         ${lift ? `<div class="field" style="min-width:90px"><label for="uE">Off the floor (cm)</label><input id="uE" type="number" step="5" min="0" max="500" value="${cm(u.elev)}"></div>` : ""}</div>
       <div class="row" style="align-items:center;gap:16px;margin-top:10px"><div class="nudge" role="group" aria-label="Nudge on the floor plan"><span></span><button type="button" data-n="0,-1,0" aria-label="Up on the plan">▲</button><span></span><button type="button" data-n="-1,0,0" aria-label="Left">◀</button><span></span><button type="button" data-n="1,0,0" aria-label="Right">▶</button><span></span><button type="button" data-n="0,1,0" aria-label="Down on the plan">▼</button><span></span></div>
@@ -762,7 +837,18 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#uName").oninput = e => { const v = e.target.value.trim(); if (v) change(() => { u.name = v; }); };
     $("#uKind").onchange = e => { change(() => { u.kind = e.target.value; if (isTable(u)) { u.levels = 1; u.elev = 0; } }, true); paintProps(); };
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintSizeInputs(u); e.target.value = ""; };
-    if ($("#uL")) { const setL = v => { v = clamp(Math.round(v) || 1, 1, 30); $("#uL").value = v; change(() => { u.levels = v; }); if (rack) setTimeout(paintProps, 700); };
+    const lvPaint = () => {   // the height of each level, bottom up; they always add up to the unit's height
+      const box = $("#lvHts"); if (!box) return; if (u.levels < 2) { box.innerHTML = ""; return; } const hs = lvs(u), custom = Array.isArray(u.lvh);
+      box.innerHTML = `<div class="row" style="margin-top:8px;gap:6px">${hs.map((v, i) => `<div class="field" style="min-width:64px;max-width:84px"><label for="lvH${i}">Level ${i + 1} (cm)</label><input id="lvH${i}" class="lvh" data-i="${i}" type="number" step="1" min="5" max="500" value="${cm(v)}"></div>`).join("")}</div>
+        <div class="row" style="align-items:center;margin-top:4px"><button type="button" class="btn sec" id="lvEq" ${custom ? "" : "disabled"}>Equal levels</button><span class="hint" style="margin:0">or drag the shelf lines in the Front view</span></div>`;
+      box.querySelectorAll(".lvh").forEach(inp => inp.oninput = e => {
+        const i = Number(inp.dataset.i), v = Number(e.target.value) / 100; if (e.target.value === "" || !(v >= 0.05 && v <= 5)) return;
+        change(() => { const a = lvs(u).slice(), next = i < a.length - 1 ? i + 1 : i - 1, pair = a[i] + a[next]; if (v > pair - 0.05) return; a[i] = r2(v); a[next] = r2(pair - v); u.lvh = a; });
+        box.querySelectorAll(".lvh").forEach(o => { if (o !== inp && document.activeElement !== o) o.value = cm(lvs(u)[Number(o.dataset.i)]); }); const eq = $("#lvEq"); if (eq) eq.disabled = false;
+      });
+      const eq = $("#lvEq"); if (eq) eq.onclick = () => { change(() => { u.lvh = null; }, true); lvPaint(); };
+    }; lvPaint();
+    if ($("#uL")) { const setL = v => { v = clamp(Math.round(v) || 1, 1, 30); $("#uL").value = v; change(() => { if (v !== u.levels) u.lvh = null; u.levels = v; }); lvPaint(); if (rack) setTimeout(paintProps, 700); };
       $("#uL").oninput = e => { if (e.target.value) setL(Number(e.target.value)); }; $("#uLm").onclick = () => setL(u.levels - 1); $("#uLp").onclick = () => setL(u.levels + 1); }
     el.querySelectorAll("[data-n]").forEach(b => b.onclick = () => requireAuth(() => { const [dx, dz, de] = b.dataset.n.split(",").map(Number); nudge(u, dx, dz, de); }));
     el.querySelectorAll(".sw").forEach(b => b.onclick = () => { change(() => { u.color = b.dataset.col; }, true); paintProps(); });
@@ -828,7 +914,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       <p class="hint">${esc(unitPath(u))}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " inside" : ""}</p>
       ${sec("bxon", "Sits on", `<div class="row"><div class="field" style="min-width:160px"><label for="bxR">Rack or box</label><select id="bxR" class="sel">${spots.map(r => `<option value="${r.id}" ${r.id === p.id ? "selected" : ""}>${esc(r.label)}</option>`).join("")}</select></div>
         ${onRack ? `<div class="field" style="min-width:80px;max-width:110px"><label for="bxLv">Level</label><select id="bxLv" class="sel">${Array.from({ length: p.levels }, (_, i) => `<option ${u.parent_level === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}</div>
-        <p class="hint">A box can sit on a rack level or on top of another box, so you can stack them.</p>`)}
+        <p class="hint">A box can sit on a rack level or on top of another box. In the Front view, drag a box onto another box to stack it, or into a rack level to move it, and drag its dots to resize it.</p>
+        ${u.at_left != null ? `<button type="button" class="btn sec" id="bxAuto">Place automatically</button>` : ""}`)}
       ${sec("bxsec", "Sections", `<div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="scM" aria-label="One less">−</button><input id="scN" type="number" min="1" max="30" step="1" value="${u.levels}" style="width:70px;text-align:center" aria-label="Sections"><button type="button" class="btn sec mini" id="scP" aria-label="One more">+</button>
         <div class="field" style="max-width:120px;min-width:90px"><label for="scC">Across</label><input id="scC" type="number" min="1" max="30" step="1" placeholder="auto" value="${u.cols || ""}"></div></div>
         <p class="hint" style="margin:6px 0">One box can have many sections, for example a screw box with one section for each size. Pick the section when you place an item.</p><div id="secMap">${u.levels > 1 ? secMapHtml(u) : `<p class="hint" style="margin:0">One section: the whole box.</p>`}</div>`)}
@@ -845,7 +932,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     numIn("uW", "w"); numIn("uD", "d"); numIn("uH", "h");
     $("#uName").oninput = e => { const v = e.target.value.trim(); if (v) change(() => { u.name = v; }); };
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintProps(); };
-    const move = () => { const r = unit($("#bxR").value), lv = r.kind === "rack" ? clamp(Number($("#bxLv")?.value) || 1, 1, r.levels) : 1; change(() => { u.parent_id = r.id; u.parent_level = lv; }, true); paintProps(); };
+    if ($("#bxAuto")) $("#bxAuto").onclick = () => { change(() => { u.at_left = null; }, true); paintProps(); };
+    const move = () => { const r = unit($("#bxR").value), lv = r.kind === "rack" ? clamp(Number($("#bxLv")?.value) || 1, 1, r.levels) : 1; change(() => { u.parent_id = r.id; u.parent_level = lv; u.at_left = null; }, true); paintProps(); };
     $("#bxR").onchange = () => { const r = unit($("#bxR").value); if ($("#bxLv") && r.kind === "rack") $("#bxLv").innerHTML = Array.from({ length: r.levels }, (_, i) => `<option>${i + 1}</option>`).join(""); move(); }; if ($("#bxLv")) $("#bxLv").onchange = move;
     const setSec = v => {
       v = clamp(Math.round(v) || 1, 1, 30); const used = Math.max(0, ...itemsAt(u.id).map(x => Number(x.it.level) || 0));
@@ -942,8 +1030,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
           const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al);
         }
       } else if (u.kind === "rack") {
-        const T3 = 0.03, lg = 0.04, lh = u.h / u.levels;
-        for (let i = 0; i <= u.levels; i++) addBox3(u, m, cx, e0 + (i === u.levels ? u.h - T3 / 2 : i * lh + T3 / 2), cz, f.w, T3, f.d);
+        const T3 = 0.03, lg = 0.04;
+        for (let i = 0; i <= u.levels; i++) addBox3(u, m, cx, i === u.levels ? e0 + u.h - T3 / 2 : lvBase(u, i + 1) + T3 / 2, cz, f.w, T3, f.d);
         for (const sr of [-1, 1]) for (const sf of [-1, 1]) { const px = cx + D.R[0] * sr * (u.w / 2 - lg / 2) + D.F[0] * sf * (u.d / 2 - lg / 2), pz = cz + D.R[1] * sr * (u.w / 2 - lg / 2) + D.F[1] * sf * (u.d / 2 - lg / 2); addBox3(u, m, px, e0 + u.h / 2, pz, lg, u.h, lg); }
         for (const e of boxLayout(u)) {
           addBox3(e.b, matOf(e.b), e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
@@ -959,7 +1047,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         addBox3(u, m, cx, e0 + u.h / 2, cz, f.w, u.h, f.d);
         if (u.kind !== "bench" && u.kind !== "box" && u.levels > 1) {   // level lines on the front, so you can count to the right shelf
           const x0 = f.x, x1 = f.x + f.w, z0 = f.z, z1 = f.z + f.d, o2 = 0.004, ends = { 0: [[x0, z1 + o2], [x1, z1 + o2]], 90: [[x0 - o2, z0], [x0 - o2, z1]], 180: [[x0, z0 - o2], [x1, z0 - o2]], 270: [[x1 + o2, z0], [x1 + o2, z1]] }[u.rot] || [[x0, z1 + o2], [x1, z1 + o2]], segs = [];
-          for (let i = 1; i < u.levels; i++) { const y = e0 + u.h * i / u.levels; segs.push(new T.Vector3(ends[0][0], y, ends[0][1]), new T.Vector3(ends[1][0], y, ends[1][1])); }
+          for (let i = 1; i < u.levels; i++) { const y = lvBase(u, i + 1); segs.push(new T.Vector3(ends[0][0], y, ends[0][1]), new T.Vector3(ends[1][0], y, ends[1][1])); }
           root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(segs), new T.LineBasicMaterial({ color: u.color && light(u.color) ? 0x14232B : 0xE6EEF1 })));
         }
       }
@@ -1056,5 +1144,5 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#iQ").oninput = paint; $("#iUn").onchange = paint; paint();
   }
 
-  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); else if (S.view && $("#sProps") && !S.drag && !document.activeElement?.closest?.("#sProps")) { paintProps(); draw(); } }, _t: { S, fp, inPoly, area, roomOf, assetLayout, boxLayout } };
+  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); else if (S.view && $("#sProps") && !S.drag && !document.activeElement?.closest?.("#sProps")) { paintProps(); draw(); } }, _t: { S, lvs, lvBase, fp, inPoly, area, roomOf, assetLayout, boxLayout } };
 })();

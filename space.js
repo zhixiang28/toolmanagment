@@ -1003,11 +1003,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function camUpdate() { const k = S.t, C = k.C, sp = Math.sin(C.ph), cp = Math.cos(C.ph); k.camera.position.set(C.tx + C.dist * sp * Math.cos(C.th), C.ty + C.dist * cp, C.tz + C.dist * sp * Math.sin(C.th)); k.camera.lookAt(C.tx, C.ty, C.tz); }
   function fit() { const k = S.t, C = k.C, b = bounds(), w = b.x1 - b.x0, d = b.z1 - b.z0; C.tx = (b.x0 + b.x1) / 2; C.tz = (b.z0 + b.z1) / 2; C.ty = 0.4; C.dist = Math.max(w * 0.9, d * 1.5, 4) + 2; C.th = 1.1; C.ph = 0.95; camUpdate(); }
   function label(text, s) {
-    const T = THREE, c = document.createElement("canvas"); c.width = 256; c.height = 64; const g = c.getContext("2d"); g.fillStyle = "rgba(14,24,29,.78)"; g.fillRect(0, 0, 256, 64); g.fillStyle = "#fff"; g.font = "600 28px sans-serif"; g.textBaseline = "middle"; g.fillText(text.length > 16 ? text.slice(0, 15) + "…" : text, 12, 34);
+    const T = THREE, c = document.createElement("canvas"); c.width = 256; c.height = 64; const g = c.getContext("2d"); g.fillStyle = "rgba(14,24,29,.62)"; g.fillRect(0, 0, 256, 64); g.fillStyle = "#fff"; g.font = "600 28px sans-serif"; g.textBaseline = "middle"; g.fillText(text.length > 16 ? text.slice(0, 15) + "…" : text, 12, 34);
     const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), transparent: true, depthTest: false })); sp.scale.set(s, s / 4, 1); sp.renderOrder = 5; return sp;
   }
   function build() {
-    const k = S.t, T = k.T, root = k.root; while (root.children.length) root.remove(root.children[0]); k.pick = []; k.unitM = {};
+    const k = S.t, T = k.T, root = k.root; while (root.children.length) root.remove(root.children[0]); k.pick = []; k.unitM = {}; k.rl = [];
     const B = (w, h, d) => new T.BoxGeometry(w, h, d);
     for (const r of S.rooms) {
       const shape = new T.Shape(); r.points.forEach((q, i) => i ? shape.lineTo(q[0], -q[1]) : shape.moveTo(q[0], -q[1]));
@@ -1018,7 +1018,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         const wall = new T.Mesh(B(L, r.h, 0.05), wallM); wall.position.set((a[0] + b[0]) / 2, r.h / 2, (a[1] + b[1]) / 2); wall.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); root.add(wall);
         root.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(a[0], r.h, a[1]), new T.Vector3(b[0], r.h, b[1]), new T.Vector3(b[0], 0.01, b[1]), new T.Vector3(a[0], 0.01, a[1]), new T.Vector3(a[0], r.h, a[1])]), lineM));
       }
-      const c = centroid(r.points), lb = label(r.name, 1.5); lb.position.set(c[0], r.h + 0.3, c[1]); root.add(lb);
+      const c = centroid(r.points), lb = label(r.name, 1.5); lb.position.set(c[0], r.h + 0.3, c[1]); root.add(lb); (k.rl = k.rl || []).push(lb);
     }
     const edgeM = new T.LineBasicMaterial({ color: 0xE6EEF1 });
     k.own = [];   // every drawn thing with the cabinet it belongs to, so the rest can fade out when one item is being found
@@ -1045,7 +1045,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         for (const e of assetLayout(u)) {   // each asset is a box standing on the table top
           const am = new T.MeshStandardMaterial({ color: parseInt(assetCol(e.a).slice(1), 16), roughness: .55, metalness: .1, emissive: 0x000000 }); k.mats["a:" + e.a.id] = am;
           addBox3({ id: "a:" + e.a.id }, am, e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
-          const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al); k.own.push({ own: u.id, label: al });
+          const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al); k.own.push({ own: u.id, label: al, lk: "asset" });
         }
       } else if (u.kind === "rack") {
         const T3 = 0.03, lg = 0.04;
@@ -1069,7 +1069,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
           root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(segs), new T.LineBasicMaterial({ color: u.color && light(u.color) ? 0x14232B : 0xE6EEF1 })));
         }
       }
-      const lt = label(u.name, 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : 0.25), cz); root.add(lt); k.own.push({ own: u.id, label: lt });
+      const lt = label(u.name, 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : 0.25), cz); root.add(lt); k.own.push({ own: u.id, label: lt, lk: "unit" });
     }
     const mk = new T.Mesh(new T.ConeGeometry(0.16, 0.4, 16), new T.MeshBasicMaterial({ color: 0xF2C200 })); mk.rotation.x = Math.PI; mk.visible = false; root.add(mk); k.marker = mk;
   }
@@ -1079,7 +1079,13 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (k.fo !== (fo || null)) {
       k.fo = fo || null;
       for (const [id, m] of Object.entries(k.mats)) { const ghost = !!fo && k.ownOf(id) !== fo; m.transparent = ghost; m.opacity = ghost ? 0.1 : 1; m.depthWrite = !ghost; m.needsUpdate = true; }
-      for (const o of k.own) { const ghost = !!fo && o.own !== fo; if (o.edge) o.edge.material = ghost ? k.edgeG : k.edgeM; if (o.label) o.label.visible = !ghost; }
+      for (const o of k.own) { const ghost = !!fo && o.own !== fo; if (o.edge) o.edge.material = ghost ? k.edgeG : k.edgeM; }
+    }
+    {   // name tags only where they help: the unit you picked or are finding, else the few nearest to where you look; room names only from far away
+      const sid = S.hl || (S.sel && S.sel.kind === "unit" ? S.sel.id : null), act = fo || (sid ? k.ownOf(sid) : null), C = k.C, near = new Set();
+      if (!act) k.own.filter(o => o.lk === "unit").map(o => ({ o, d: Math.hypot(o.label.position.x - C.tx, o.label.position.z - C.tz) })).filter(x => x.d < 3.2 && C.dist < 7).sort((a, b) => a.d - b.d).slice(0, 3).forEach(x => near.add(x.o));
+      for (const o of k.own) if (o.label) o.label.visible = o.lk === "asset" ? !!act && o.own === act : act ? o.own === act : near.has(o);
+      for (const l of k.rl) l.visible = C.dist > 9;
     }
     for (const [uid, m] of Object.entries(k.mats)) { const on = S.hl === uid; m.emissive.setHex(on ? 0x6B5400 : 0x000000); m.emissiveIntensity = on ? 0.5 + p : 0; }
     const ae = S.hl && String(S.hl).startsWith("a:") ? assetEntry(String(S.hl).slice(2)) : null; if (ae && k.marker) { k.marker.visible = true; k.marker.position.set(ae.cx, ae.y + ae.h + 0.45 + 0.1 * p, ae.cz); return; }
@@ -1107,13 +1113,31 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const asset = S.hl && String(S.hl).startsWith("a:") ? (state.assets || []).find(x => "a:" + x.id === S.hl) : null;   // an asset on a table: show its table, with the asset highlighted
     S.sel = asset ? (asset.unit_id ? { kind: "unit", id: asset.unit_id } : null) : S.hl ? { kind: "unit", id: S.hl } : null; S.focusItem = null; paintSide();
   }
-  function focusUnit(uid) {
-    const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null, C = k.C;
-    if (ae) { C.tx = ae.cx; C.tz = ae.cz; C.ty = ae.y + ae.h / 2; C.dist = Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3); camUpdate(); return; }
-    const u = unit(uid); if (!u) return; const a = anchor(u); C.tx = a.x; C.tz = a.z; C.ty = (a.y0 + a.y1) / 2; C.dist = Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4); camUpdate(); }
+  /* glide the camera to a spot, standing in front of the thing (th is the angle around it, ph how high we look from) */
+  function flyTo(g, viaOverview) {
+    const k = S.t, C = k.C, cur = () => ({ tx: C.tx, ty: C.ty, tz: C.tz, dist: C.dist, th: C.th, ph: C.ph }), t0 = performance.now(), id = k.fly = (k.fly || 0) + 1, keys = [cur()];
+    if (viaOverview) { const bd = bounds(), w = bd.x1 - bd.x0, d = bd.z1 - bd.z0, ov = { tx: (bd.x0 + bd.x1) / 2, tz: (bd.z0 + bd.z1) / 2, ty: 0.4, dist: Math.max(w * 0.9, d * 1.5, 4) + 2, th: g.th, ph: 0.95 }; if (C.dist < ov.dist * 0.85 || Math.hypot(C.tx - ov.tx, C.tz - ov.tz) > 1) keys.push(ov); }   // pull back to see the whole space first
+    keys.push(g); const segs = keys.length - 1, dur = segs > 1 ? 1900 : 750;
+    const lerp = (A, B, e) => { let dth = B.th - A.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth)); return { tx: A.tx + (B.tx - A.tx) * e, ty: A.ty + (B.ty - A.ty) * e, tz: A.tz + (B.tz - A.tz) * e, dist: A.dist + (B.dist - A.dist) * e, th: A.th + dth * e, ph: A.ph + (B.ph - A.ph) * e }; };
+    const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const step = now => {
+      if (!S.t || k.fly !== id) return; const t = Math.min(1, (now - t0) / dur);
+      // a short pull-back, a brief look at the whole space, then a long glide in
+      const w = segs > 1 ? (t < .35 ? [0, t / .35] : [1, (t - .35) / .65]) : [0, t], i = Math.min(w[0], segs - 1), v = lerp(keys[i], keys[i + 1], ease(Math.min(1, w[1])));
+      Object.assign(C, v); camUpdate(); if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  function focusUnit(uid, overview) {
+    const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null;
+    const front = u => { const D = DIR[(rootOf(u) || u).rot] || DIR[0]; return Math.atan2(-D.F[1], -D.F[0]); };   // camera on the side the unit faces
+    if (ae) { const t = unit((state.assets || []).find(x => "a:" + x.id === "a:" + String(uid).slice(2))?.unit_id); flyTo({ tx: ae.cx, tz: ae.cz, ty: ae.y + ae.h / 2, dist: Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3), th: t ? front(t) : k.C.th, ph: 1.2 }, overview); return; }
+    const u = unit(uid); if (!u) return; const a = anchor(u);
+    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 }, overview);
+  }
   function focusItem(kind, id) {
     const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
-    S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();
+    S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl, true); paintSide();
   }
   /* a shelf, cabinet or rack as a small picture: one row per level, top first, a coloured tag for each box. Tap a tag to open what is inside below it. */
   function rackBody(u, itemRows, addBtn, boxBody) {

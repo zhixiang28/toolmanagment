@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -136,6 +136,8 @@
 .vwh strong{font:600 20px var(--display)}.vwh .seg button{padding:3px 10px;min-height:30px;font-size:14px}
 .vw canvas{width:100%;display:block;touch-action:none;background:#EEF1F2}.vw .hint{margin:0;padding:6px 12px}
 .spprops{align-self:start}
+.split.wide .spcol{display:contents}.split.wide .vtop{grid-column:1;grid-row:1}.split.wide .spprops{grid-column:2;grid-row:1;position:static;max-height:none;overflow:visible}.split.wide .vfront{grid-column:1/-1;grid-row:2}
+@media(max-width:760px){.split.wide .spprops{grid-column:1;grid-row:3}.split.wide .vfront{grid-row:2}.split.wide .vtop{grid-row:1}}
 @media(min-width:761px){.spprops{position:sticky;top:176px;max-height:calc(100vh - 192px);overflow:auto}}
 details.acc{border-top:1px solid var(--line)}
 details.acc>summary{cursor:pointer;font:600 19px var(--display);padding:8px 0;list-style:none;display:flex;justify-content:space-between;align-items:center}
@@ -155,9 +157,9 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     stop(); ensureStyle(); const me = S.view = {};
     $("#main").innerHTML = `<div class="summary"><div><h1>Space plan</h1><p>Draw rooms from above, then place shelves, cabinets, desks and racks. Drag in the <strong>top view</strong> to move along the floor, and in the <strong>front view</strong> to move sideways and up or down.</p></div></div>
       <div class="sptool" id="sBar"></div>
-      <div class="split"><div class="spcol">
-        <div class="panel vw"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
-        <div class="panel vw"><div class="vwh"><strong id="eTitle">Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
+      <div class="split" id="spSplit"><div class="spcol">
+        <div class="panel vw vtop"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
+        <div class="panel vw vfront"><div class="vwh"><strong id="eTitle">Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span><span class="seg" id="eSz" role="group" aria-label="Size of this view"></span><span class="seg" id="eZ" role="group" aria-label="Zoom this view"><button data-ez="out" aria-label="Zoom out">−</button><button data-ez="in" aria-label="Zoom in">＋</button><button data-ez="fit">Fit</button></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
         <div class="panel spprops" id="sProps"></div></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
     sizeCanvas(); fitView(); fitFront(); paintBar(); paintSeg(); paintProps(); draw(); bindCanvas(); bindFront();
@@ -165,8 +167,10 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     S.keys = onKey; document.addEventListener("keydown", S.keys);
   }
   function sizeCanvas() {
-    const cv = $("#sCv"), ev = $("#eCv"); if (!cv || !ev) return; const w = Math.max(280, cv.parentElement.clientWidth);
-    cv.width = ev.width = w; cv.height = Math.round(clamp(w * 0.54, 280, 440)); ev.height = Math.round(clamp(w * 0.36, 210, 270));
+    const cv = $("#sCv"), ev = $("#eCv"), sp = $("#spSplit"); if (!cv || !ev) return; sp.classList.toggle("wide", S.esize === "L");   // the large front view takes the full width
+    const w = Math.max(280, cv.parentElement.clientWidth), ew = Math.max(280, ev.parentElement.clientWidth);
+    cv.width = w; cv.height = Math.round(clamp(w * 0.54, 280, 440)); ev.width = ew;
+    ev.height = Math.round(({ S: clamp(ew * 0.36, 210, 270), M: clamp(ew * 0.5, 300, 420), L: clamp(ew * 0.5, 420, 640) })[S.esize] || 300);
   }
   function paintBar() {
     const el = $("#sBar"); if (!el) return; const t = S.tool, T = (id, label) => `<button data-tool="${id}" aria-pressed="${t === id}">${label}</button>`;
@@ -366,6 +370,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const el = $("#eSeg"); if (!el) return; const V = EV();
     el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.edge} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
     el.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.eview = b.dataset.view; try { localStorage.setItem("sp_view", S.eview); } catch (e) {} paintSeg(); fitFront(); drawFront(); });
+    const sz = $("#eSz"); if (sz) { sz.innerHTML = ["S", "M", "L"].map(k => `<button data-sz="${k}" aria-pressed="${S.esize === k}" aria-label="${({ S: "Small", M: "Medium", L: "Large" })[k]} view">${k}</button>`).join(""); sz.querySelectorAll("[data-sz]").forEach(b => b.onclick = () => { S.esize = b.dataset.sz; try { localStorage.setItem("sp_esize", S.esize); } catch (e) {} sizeCanvas(); fitFront(); draw(); paintSeg(); }); }
+    const ez = $("#eZ"); if (ez) ez.querySelectorAll("[data-ez]").forEach(b => b.onclick = () => { const cv = $("#eCv"), E = S.ev; if (b.dataset.ez === "fit") { fitFront(); drawFront(); return; } const f = b.dataset.ez === "in" ? 1.25 : 0.8, hc = cv.width / 2 / E.ppm + E.h0, yc = (E.base - cv.height / 2) / E.ppm; E.ppm = clamp(E.ppm * f, 10, 400); E.h0 = hc - cv.width / 2 / E.ppm; E.base = cv.height / 2 + yc * E.ppm; drawFront(); });
     const tt = $("#eTitle"); if (tt) tt.textContent = V.label + " view";
     const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " (" + V.edge + " of the plan), looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
   }

@@ -502,7 +502,7 @@ async function refreshAll() {
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
       guard(sb.from("space_rooms").select("id,name,points").eq("active", true)),
-      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot").eq("active", true)),
+      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level").eq("active", true)),
     ]);
     await refreshDevice();
     const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits), evKey = JSON.stringify(events[0]?.id) + events.length;
@@ -624,7 +624,7 @@ function placeHtml(it, k) {
   return `<div class="row"><div class="field"><label for="${k}_unit">Shelf or cabinet</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
     <div class="field" style="max-width:120px"><label for="${k}_lvl">Level</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
 }
-const unitLabel = u => { const r = roomOfUnit(u); return (r ? r.name + " · " : "") + u.name; };
+const unitLabel = u => { const r = roomOfUnit(u), p = u.parent_id && unitById(u.parent_id); return (r ? r.name + " · " : "") + (p ? p.name + " · level " + u.parent_level + " · " : "") + u.name; };
 const levelOpts = (u, lv) => u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
 function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { $("#" + k + "_lvl").innerHTML = levelOpts((state.spaceUnits || []).find(x => x.id === us.value), 1); }; }
 async function savePlace(kind, id, k, it) {
@@ -657,8 +657,10 @@ function paintSheet() {
   bindPlace("sp");
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
+const unitById = id => (state.spaceUnits || []).find(x => x.id === id);
 function roomOfUnit(u) {
-  const sw = Number(u.rot) % 180 !== 0, cx = Number(u.x) + (sw ? u.d : u.w) / 2, cz = Number(u.z) + (sw ? u.w : u.d) / 2;
+  const b = (u.parent_id && unitById(u.parent_id)) || u;   // a box on a rack is in the rack's room
+  const sw = Number(b.rot) % 180 !== 0, cx = Number(b.x) + (sw ? b.d : b.w) / 2, cz = Number(b.z) + (sw ? b.w : b.d) / 2;
   const inside = pts => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
   return (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points)) || null;
 }
@@ -1046,7 +1048,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "13";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "14";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1083,7 +1085,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + " · level " + it.level;
+  return unitLabel(u) + (u.parent_id ? "" : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 

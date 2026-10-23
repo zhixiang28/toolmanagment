@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -109,7 +109,7 @@
   function paintUndo() { const b = $("#sUndo"); if (b) b.disabled = !S.undo.length; }
   function stop() {
     flushSave(); S.view = null; S.drag = null; window.onresize = null;
-    if (S.keys) { document.removeEventListener("keydown", S.keys); S.keys = null; }
+    if (S.keys) { document.removeEventListener("keydown", S.keys); S.keys = null; } if (S.keysUp) { document.removeEventListener("keyup", S.keysUp); S.keysUp = null; S.space = false; }
     if (S.t) { cancelAnimationFrame(S.t.raf); try { S.t.renderer.dispose(); } catch (e) {} window.removeEventListener("resize", S.t.onResize); S.t = null; }
   }
 
@@ -188,7 +188,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
     sizeCanvas(); fitView(); fitFront(); paintBar(); paintSeg(); paintProps(); draw(); bindCanvas(); bindFront();
     window.onresize = () => { if (S.view === me) { sizeCanvas(); fitFront(); draw(); } };
-    S.keys = onKey; document.addEventListener("keydown", S.keys);
+    S.keys = onKey; document.addEventListener("keydown", S.keys); S.keysUp = e => { if (e.key === " ") S.space = false; }; document.addEventListener("keyup", S.keysUp);
   }
   function sizeCanvas() {
     const cv = $("#sCv"), ev = $("#eCv"), sp = $("#spSplit"); if (!cv || !ev) return; sp.classList.toggle("wide", S.esize === "L");   // the large front view takes the full width
@@ -198,7 +198,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   function paintBar() {
     const el = $("#sBar"); if (!el) return; const t = S.tool, T = (id, label) => `<button data-tool="${id}" aria-pressed="${t === id}">${label}</button>`;
-    el.innerHTML = `<span class="seg" role="group" aria-label="Tool">${T("select", "<span class=\"tl\">Select / move</span><span class=\"ts\">Select</span>")}${T("rect", "<span class=\"tl\">Room: rectangle</span><span class=\"ts\">Rect room</span>")}${T("poly", "<span class=\"tl\">Room: corners</span><span class=\"ts\">Corner room</span>")}</span>
+    el.innerHTML = `<span class="seg" role="group" aria-label="Tool">${T("select", "<span class=\"tl\">Select / move</span><span class=\"ts\">Select</span>")}${T("rect", "<span class=\"tl\">Room: rectangle</span><span class=\"ts\">Rect room</span>")}${T("poly", "<span class=\"tl\">Room: corners</span><span class=\"ts\">Corner room</span>")}${T("pan", "<span class=\"tl\">Pan view</span><span class=\"ts\">Pan</span>")}</span>
       <details class="addm" id="addm"><summary>＋ Add</summary><div class="addp">${Object.entries(ADD_LABEL).map(([k, l]) => { const kd = KINDS[(ADDS[k] || {}).kind || k]; return `<button type="button" data-add="${k}"><i style="background:${kd.fill}"></i>${l}</button>`; }).join("")}</div></details>
       <span class="grow"></span><button class="btn sec" id="sUndo" title="Undo (Ctrl+Z)" ${S.undo.length ? "" : "disabled"}>↶ Undo</button><span class="seg"><button id="zOut" aria-label="Zoom out">−</button><button id="zIn" aria-label="Zoom in">＋</button><button id="zFit">Fit</button></span>
       ${t === "poly" ? `<span class="row" style="width:100%"><button class="btn" id="pFin" ${S.draft.length >= 3 ? "" : "disabled"}>Finish room</button><button class="btn sec" id="pUndo" ${S.draft.length ? "" : "disabled"}>Undo corner</button><button class="btn sec" id="pCancel">Cancel</button></span>` : ""}`;
@@ -297,7 +297,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     tag("BACK", cv.width / 2, 22); tag("FRONT", cv.width / 2, cv.height - 10); tag("LEFT", 10, cv.height / 2, -Math.PI / 2); tag("RIGHT", cv.width - 10, cv.height / 2, Math.PI / 2); g.restore();
     drawFront(); paintInfo();
     const hint = $("#sHint"); if (hint) hint.textContent = S.tool === "rect" ? "Drag from one corner of the room to the opposite corner." : S.tool === "poly" ? "Click each corner of the room in order. Click the green first corner (or Finish room) to close it." : !state.user ? "Sign in (top right) to change things. You can still look around and pick things."
-      : S.multi.length > 1 ? "Drag any selected unit to move them all. Shift or Ctrl click adds or removes one. Arrows nudge, R turns the group, Ctrl+C then Ctrl+V copies, Delete removes." : selUnit ? "Drag to move. Drag the yellow handles to resize. Shift or Ctrl click adds more units. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Shift-drag on empty space to select several (or Ctrl+A). Drag the empty background to move the view; scroll or pinch to zoom.";
+      : S.multi.length > 1 ? "Drag any selected unit to move them all. Shift or Ctrl click adds or removes one. Arrows nudge, R turns the group, Ctrl+C then Ctrl+V copies, Delete removes." : selUnit ? "Drag to move. Drag the yellow handles to resize. Shift or Ctrl click adds more units. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag a room to move it with everything inside. Shift-drag on empty space to select several (or Ctrl+A). Drag outside the rooms, or hold Space, or use Pan, to move the view; scroll or pinch to zoom.";
   }
   /* snapping: edges of a moving or resizing unit stick to other units' edges and to walls */
   function snapLines(skipId) {
@@ -322,6 +322,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     cv.onpointerdown = e => {
       const w = pt(e); cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, w);
       if (pts.size === 2) { if (S.drag?.orig && S.drag.moved && unit(S.drag.id)) Object.assign(unit(S.drag.id), S.drag.orig); S.rect = null; const [a, b] = [...pts.values()]; S.drag = { kind: "pinch", d0: Math.hypot(a.px - b.px, a.py - b.py), ppm: S.v.ppm }; return; }
+      if (S.tool === "pan" || S.space || e.button === 1) { S.drag = { kind: "pan", px: w.px, py: w.py, ox: S.v.ox, oz: S.v.oz }; cv.style.cursor = "grabbing"; return; }
       if (S.tool === "rect") { if (needSignIn()) return; const x = snapTo(w.x, 0.1), z = snapTo(w.z, 0.1); S.rect = { x0: x, z0: z, x1: x, z1: z }; return; }
       if (S.tool === "poly") { if (needSignIn()) return; const x = snapTo(w.x, 0.1), z = snapTo(w.z, 0.1), f = S.draft[0]; if (f && S.draft.length >= 3 && Math.hypot(sx(f[0]) - w.px, sy(f[1]) - w.py) < 12) { finishPoly(); return; } S.draft.push([x, z]); paintBar(); draw(); return; }
       const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: "resize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, moved: false }; return; }
@@ -335,13 +336,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (u) { const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw(); if (needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; } const f = fp(u); S.drag = { kind: "unit", id: u.id, dx: w.x - f.x, dz: w.z - f.z, orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return; }
       const r = hitRoom(w), cur = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null; S.multi = [];
       flushSave(); if (r) S.sel = { kind: "room", id: r.id }; else if (!(cur && edgeNear(cur, w))) S.sel = null; paintProps(); draw();
+      if (r && state.user) { const us = tops().filter(u => roomOf(u) === r); S.drag = { kind: "room", id: r.id, wx: w.x, wz: w.z, orig: r.points.map(q => q.slice()), us: us.map(u => ({ id: u.id, orig: { ...u } })), moved: false }; return; }   // drag a room to move it with everything inside
       S.drag = { kind: "pan", px: w.px, py: w.py, ox: S.v.ox, oz: S.v.oz };
     };
     cv.onpointermove = e => {
       const w = pt(e), d = S.drag; if (pts.has(e.pointerId)) pts.set(e.pointerId, w);
       if (S.tool === "rect" && S.rect) { S.rect.x1 = snapTo(w.x, 0.1); S.rect.z1 = snapTo(w.z, 0.1); draw(); return; }
       if (S.tool === "poly") { S.hover = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; draw(); return; }
-      if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize"; return; }
+      if (!d) { const hh = hitHandle(w); cv.style.cursor = S.tool === "pan" || S.space ? "grab" : hh ? (hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize") : (state.user && S.tool === "select" && !hitsAt(w).length && hitRoom(w)) ? "move" : "default"; return; }
       if (d.kind === "pinch") { if (pts.size < 2) return; const [a, b] = [...pts.values()], dist = Math.hypot(a.px - b.px, a.py - b.py), mx = (a.px + b.px) / 2, my = (a.py + b.py) / 2, wx = mx / S.v.ppm + S.v.ox, wz = my / S.v.ppm + S.v.oz; S.v.ppm = clamp(d.ppm * dist / d.d0, 8, 400); S.v.ox = wx - mx / S.v.ppm; S.v.oz = wz - my / S.v.ppm; draw(); return; }
       if (d.kind === "marq") { S.marq.x1 = w.x; S.marq.z1 = w.z; draw(); return; }
       if (d.kind === "tap0") return;
@@ -363,12 +365,25 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         setFootprint(u, F); S.guides = { x: gx, z: gz }; d.moved = true; draw(); paintSizeInputs(u);
       }
       else if (d.kind === "vertex") { d.r.points[d.i] = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; d.moved = true; draw(); }
+      else if (d.kind === "room") {
+        const r = room(d.id); if (!r) return; let dx = snapTo(w.x - d.wx, 0.05), dz = snapTo(w.z - d.wz, 0.05);
+        if (!e.altKey) {   // the room's edges stick to other rooms' corners
+          const xs = [], zs = [], gx = [], gz = []; S.rooms.forEach(o => { if (o.id !== d.id) o.points.forEach(q => { xs.push(q[0]); zs.push(q[1]); }); });
+          const ox = d.orig.map(q => q[0]), oz = d.orig.map(q => q[1]); let bx = null, bz = null;
+          [Math.min(...ox), Math.max(...ox)].forEach(v => { const s1 = snapEdge(v + dx, xs, gx); if (s1 != null && bx == null) bx = s1 - v; });
+          [Math.min(...oz), Math.max(...oz)].forEach(v => { const s1 = snapEdge(v + dz, zs, gz); if (s1 != null && bz == null) bz = s1 - v; });
+          if (bx != null) dx = bx; if (bz != null) dz = bz; S.guides = { x: gx, z: gz };
+        }
+        if (dx || dz) d.moved = true; r.points = d.orig.map(q => [r2(q[0] + dx), r2(q[1] + dz)]);
+        d.us.forEach(g0 => { const gu = unit(g0.id); if (gu) { gu.x = r2(g0.orig.x + dx); gu.z = r2(g0.orig.z + dz); } }); draw();
+      }
     };
     const up = async e => {
       pts.delete(e.pointerId); S.guides = null;
       if (S.tool === "rect" && S.rect) { const R = S.rect; S.rect = null; const w = Math.abs(R.x1 - R.x0), d = Math.abs(R.z1 - R.z0); if (w < 0.5 || d < 0.5) { draw(); return; } const x0 = Math.min(R.x0, R.x1), z0 = Math.min(R.z0, R.z1); roomDialog(null, [[x0, z0], [x0 + w, z0], [x0 + w, z0 + d], [x0, z0 + d]]); return; }
       const d = S.drag; S.drag = null; if (!d) { draw(); return; } if (d.kind === "pinch") { return; }
       if (d.kind === "tap0") { draw(); return; }
+      if (d.kind === "room") { if (d.moved) { const r = room(d.id), us = d.us.map(g0 => unit(g0.id)).filter(Boolean); snapUndo({ kind: "group", units: d.us.map(g0 => g0.orig), rooms: [{ id: r.id, points: d.orig }] }); try { await saveRoom(r); await saveMany(us); } catch (err) { await load(); } paintProps(); fitFront(); } draw(); return; }
       if (d.kind === "marq") { const R = S.marq; S.marq = null; if (R) { const x0 = Math.min(R.x0, R.x1), x1 = Math.max(R.x0, R.x1), z0 = Math.min(R.z0, R.z1), z1 = Math.max(R.z0, R.z1); const got = tops().filter(u => { const f = fp(u); return f.x < x1 && f.x + f.w > x0 && f.z < z1 && f.z + f.d > z0; }).map(u => u.id); setMulti([...R.base, ...got]); paintProps(); } draw(); return; }
       if (d.kind === "tap" && d.multi) { setMulti([d.id]); paintProps(); draw(); return; }
       if (d.kind === "unit" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
@@ -570,6 +585,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function onKey(e) {
     if (!S.view || $("#dlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const ctrl = e.ctrlKey || e.metaKey, u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
+    if (e.key === " " && !ctrl) { e.preventDefault(); S.space = true; return; }   // hold Space and drag to pan
     if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (state.user) undo(); return; }
     if (ctrl && e.key.toLowerCase() === "a") { e.preventDefault(); setMulti(tops().map(x => x.id)); paintProps(); draw(); return; }
     if (e.key === "Escape") { flushSave(); S.multi = []; S.sel = null; S.draft = []; S.rect = null; paintBar(); paintProps(); draw(); return; }
@@ -633,7 +649,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (s && s.kind === "room") {
       const r = room(s.id); if (!r) return; const inside = tops().filter(u => roomOf(u) === r);
       el.innerHTML = `<h2>${esc(r.name)} <span class="chipk">Room</span></h2><p class="hint">${r2(area(r.points))} m² · ${r.points.length} corners · walls ${r.h} m high · ${inside.length} unit${inside.length === 1 ? "" : "s"} inside</p>
-        <p>Drag a corner on the top view to reshape the room. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
+        <p>Drag the room itself on the top view to move it with everything inside, or a corner to reshape it. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
         <div class="row"><button class="btn" id="rTurnL">↺ Turn room</button><button class="btn" id="rTurnR">Turn room ↻</button></div>
         <p class="hint">Turns the room and the ${inside.length} unit${inside.length === 1 ? "" : "s"} inside it together, a quarter turn at a time.</p>
         <div class="row" style="align-items:center;gap:16px;margin:8px 0"><div class="nudge" role="group" aria-label="Move the room and its units"><span></span><button type="button" data-rn="0,-1" aria-label="Up">▲</button><span></span><button type="button" data-rn="-1,0" aria-label="Left">◀</button><span></span><button type="button" data-rn="1,0" aria-label="Right">▶</button><span></span><button type="button" data-rn="0,1" aria-label="Down">▼</button><span></span></div>

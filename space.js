@@ -334,6 +334,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       }
       const u = hits.find(h => inGroup(h.id)) || hits[0];
       if (u) { const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw(); if (needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; } const f = fp(u); S.drag = { kind: "unit", id: u.id, dx: w.x - f.x, dz: w.z - f.z, orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return; }
+      const er = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null, eh = er && state.user ? edgeNear(er, w) : null;
+      if (eh) { flushSave(); S.multi = []; S.drag = { kind: "edge", r: er, i: eh.i, orig: er.points.map(q => q.slice()), w0: { x: w.x, z: w.z }, moved: false }; return; }   // drag a wall of the selected room to push it in or out
       const r = hitRoom(w), cur = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null; S.multi = [];
       flushSave(); if (r) S.sel = { kind: "room", id: r.id }; else if (!(cur && edgeNear(cur, w))) S.sel = null; paintProps(); draw();
       if (r && state.user) { const us = tops().filter(u => roomOf(u) === r); S.drag = { kind: "room", id: r.id, wx: w.x, wz: w.z, orig: r.points.map(q => q.slice()), us: us.map(u => ({ id: u.id, orig: { ...u } })), moved: false }; return; }   // drag a room to move it with everything inside
@@ -343,7 +345,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const w = pt(e), d = S.drag; if (pts.has(e.pointerId)) pts.set(e.pointerId, w);
       if (S.tool === "rect" && S.rect) { S.rect.x1 = snapTo(w.x, 0.1); S.rect.z1 = snapTo(w.z, 0.1); draw(); return; }
       if (S.tool === "poly") { S.hover = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; draw(); return; }
-      if (!d) { const hh = hitHandle(w); cv.style.cursor = S.tool === "pan" || S.space ? "grab" : hh ? (hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize") : (state.user && S.tool === "select" && !hitsAt(w).length && hitRoom(w)) ? "move" : "default"; return; }
+      if (!d) { const hh = hitHandle(w); cv.style.cursor = S.tool === "pan" || S.space ? "grab" : hh ? (hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize") : (() => { if (!state.user || S.tool !== "select" || hitsAt(w).length) return null; const er = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null, eh = er && edgeNear(er, w); if (eh) { const a = er.points[eh.i], b = er.points[(eh.i + 1) % er.points.length]; return Math.abs(a[1] - b[1]) < 1e-6 ? "ns-resize" : Math.abs(a[0] - b[0]) < 1e-6 ? "ew-resize" : "move"; } return hitRoom(w) ? "move" : null; })() || "default"; return; }
       if (d.kind === "pinch") { if (pts.size < 2) return; const [a, b] = [...pts.values()], dist = Math.hypot(a.px - b.px, a.py - b.py), mx = (a.px + b.px) / 2, my = (a.py + b.py) / 2, wx = mx / S.v.ppm + S.v.ox, wz = my / S.v.ppm + S.v.oz; S.v.ppm = clamp(d.ppm * dist / d.d0, 8, 400); S.v.ox = wx - mx / S.v.ppm; S.v.oz = wz - my / S.v.ppm; draw(); return; }
       if (d.kind === "marq") { S.marq.x1 = w.x; S.marq.z1 = w.z; draw(); return; }
       if (d.kind === "tap0") return;
@@ -365,6 +367,17 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         setFootprint(u, F); S.guides = { x: gx, z: gz }; d.moved = true; draw(); paintSizeInputs(u);
       }
       else if (d.kind === "vertex") { d.r.points[d.i] = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; d.moved = true; draw(); }
+      else if (d.kind === "edge") {
+        const o = d.orig, n = o.length, a = o[d.i], b = o[(d.i + 1) % n], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez) || 1, nx = -ez / L, nz = ex / L, horiz = Math.abs(ez) < 1e-6, vert = Math.abs(ex) < 1e-6;
+        let t = (w.x - d.w0.x) * nx + (w.z - d.w0.z) * nz;   // how far the pointer has gone, square to the wall
+        if (horiz || vert) {   // a straight wall moves to a tidy position, and lines up with other rooms' walls
+          const cs = [], gs = []; S.rooms.forEach(q => { if (q.id !== d.r.id) q.points.forEach(p => cs.push(horiz ? p[1] : p[0])); });
+          let pos = snapTo((horiz ? a[1] + t * nz : a[0] + t * nx), 0.1); if (!e.altKey) { const sn = snapEdge(pos, cs, gs); if (sn != null) pos = sn; S.guides = horiz ? { x: [], z: gs } : { x: gs, z: [] }; }
+          t = horiz ? (pos - a[1]) / nz : (pos - a[0]) / nx;
+        } else t = snapTo(t, 0.1);
+        const pts = o.map(q => q.slice()), j = (d.i + 1) % n; pts[d.i] = [r2(a[0] + nx * t), r2(a[1] + nz * t)]; pts[j] = [r2(b[0] + nx * t), r2(b[1] + nz * t)];
+        d.r.points = pts; if (Math.abs(t) > 0.001) d.moved = true; draw();
+      }
       else if (d.kind === "room") {
         const r = room(d.id); if (!r) return; let dx = snapTo(w.x - d.wx, 0.05), dz = snapTo(w.z - d.wz, 0.05);
         if (!e.altKey) {   // the room's edges stick to other rooms' corners
@@ -389,6 +402,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (d.kind === "unit" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
       if ((d.kind === "tap" || (d.kind === "unit" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // clicking the same spot again picks what is underneath
       if ((d.kind === "unit" || d.kind === "resize") && d.moved) { const u = unit(d.id); snapUnit(d.orig); try { await saveUnit(u); paintProps(); } catch (e) { Object.assign(u, d.orig); S.undo.pop(); paintUndo(); } draw(); }
+      else if (d.kind === "edge" && d.moved) { snapUndo({ kind: "room", id: d.r.id, points: d.orig }); try { await saveRoom(d.r); } catch (err) { d.r.points = d.orig; S.undo.pop(); paintUndo(); } paintProps(); fitFront(); draw(); }
       else if (d.kind === "vertex" && d.moved) { snapUndo({ kind: "room", id: d.r.id, points: d.orig }); try { await saveRoom(d.r); } catch (e) { d.r.points = d.orig; S.undo.pop(); paintUndo(); } paintProps(); draw(); }
       else draw();
     };
@@ -649,7 +663,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (s && s.kind === "room") {
       const r = room(s.id); if (!r) return; const inside = tops().filter(u => roomOf(u) === r);
       el.innerHTML = `<h2>${esc(r.name)} <span class="chipk">Room</span></h2><p class="hint">${r2(area(r.points))} m² · ${r.points.length} corners · walls ${r.h} m high · ${inside.length} unit${inside.length === 1 ? "" : "s"} inside</p>
-        <p>Drag the room itself on the top view to move it with everything inside, or a corner to reshape it. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
+        <p>Drag the room itself on the top view to move it with everything inside. Drag a wall to push it in or out, or a corner to reshape it. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
         <div class="row"><button class="btn" id="rTurnL">↺ Turn room</button><button class="btn" id="rTurnR">Turn room ↻</button></div>
         <p class="hint">Turns the room and the ${inside.length} unit${inside.length === 1 ? "" : "s"} inside it together, a quarter turn at a time.</p>
         <div class="row" style="align-items:center;gap:16px;margin:8px 0"><div class="nudge" role="group" aria-label="Move the room and its units"><span></span><button type="button" data-rn="0,-1" aria-label="Up">▲</button><span></span><button type="button" data-rn="-1,0" aria-label="Left">◀</button><span></span><button type="button" data-rn="1,0" aria-label="Right">▶</button><span></span><button type="button" data-rn="0,1" aria-label="Down">▼</button><span></span></div>

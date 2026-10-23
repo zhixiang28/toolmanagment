@@ -334,6 +334,8 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       }
       const u = hits.find(h => inGroup(h.id)) || hits[0];
       if (u) { const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw(); if (needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; } const f = fp(u); S.drag = { kind: "unit", id: u.id, dx: w.x - f.x, dz: w.z - f.z, orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return; }
+      const er = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null, eh = er && state.user ? edgeNear(er, w) : null;
+      if (eh) { flushSave(); S.multi = []; S.drag = { kind: "edge", r: er, i: eh.i, orig: er.points.map(q => q.slice()), w0: { x: w.x, z: w.z }, moved: false }; return; }   // drag a wall of the selected room to push it in or out
       const r = hitRoom(w), cur = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null; S.multi = [];
       flushSave(); if (r) S.sel = { kind: "room", id: r.id }; else if (!(cur && edgeNear(cur, w))) S.sel = null; paintProps(); draw();
       if (r && state.user) { const us = tops().filter(u => roomOf(u) === r); S.drag = { kind: "room", id: r.id, wx: w.x, wz: w.z, orig: r.points.map(q => q.slice()), us: us.map(u => ({ id: u.id, orig: { ...u } })), moved: false }; return; }   // drag a room to move it with everything inside
@@ -343,7 +345,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const w = pt(e), d = S.drag; if (pts.has(e.pointerId)) pts.set(e.pointerId, w);
       if (S.tool === "rect" && S.rect) { S.rect.x1 = snapTo(w.x, 0.1); S.rect.z1 = snapTo(w.z, 0.1); draw(); return; }
       if (S.tool === "poly") { S.hover = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; draw(); return; }
-      if (!d) { const hh = hitHandle(w); cv.style.cursor = S.tool === "pan" || S.space ? "grab" : hh ? (hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize") : (state.user && S.tool === "select" && !hitsAt(w).length && hitRoom(w)) ? "move" : "default"; return; }
+      if (!d) { const hh = hitHandle(w); cv.style.cursor = S.tool === "pan" || S.space ? "grab" : hh ? (hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize") : (() => { if (!state.user || S.tool !== "select" || hitsAt(w).length) return null; const er = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null, eh = er && edgeNear(er, w); if (eh) { const a = er.points[eh.i], b = er.points[(eh.i + 1) % er.points.length]; return Math.abs(a[1] - b[1]) < 1e-6 ? "ns-resize" : Math.abs(a[0] - b[0]) < 1e-6 ? "ew-resize" : "move"; } return hitRoom(w) ? "move" : null; })() || "default"; return; }
       if (d.kind === "pinch") { if (pts.size < 2) return; const [a, b] = [...pts.values()], dist = Math.hypot(a.px - b.px, a.py - b.py), mx = (a.px + b.px) / 2, my = (a.py + b.py) / 2, wx = mx / S.v.ppm + S.v.ox, wz = my / S.v.ppm + S.v.oz; S.v.ppm = clamp(d.ppm * dist / d.d0, 8, 400); S.v.ox = wx - mx / S.v.ppm; S.v.oz = wz - my / S.v.ppm; draw(); return; }
       if (d.kind === "marq") { S.marq.x1 = w.x; S.marq.z1 = w.z; draw(); return; }
       if (d.kind === "tap0") return;
@@ -365,6 +367,17 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         setFootprint(u, F); S.guides = { x: gx, z: gz }; d.moved = true; draw(); paintSizeInputs(u);
       }
       else if (d.kind === "vertex") { d.r.points[d.i] = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; d.moved = true; draw(); }
+      else if (d.kind === "edge") {
+        const o = d.orig, n = o.length, a = o[d.i], b = o[(d.i + 1) % n], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez) || 1, nx = -ez / L, nz = ex / L, horiz = Math.abs(ez) < 1e-6, vert = Math.abs(ex) < 1e-6;
+        let t = (w.x - d.w0.x) * nx + (w.z - d.w0.z) * nz;   // how far the pointer has gone, square to the wall
+        if (horiz || vert) {   // a straight wall moves to a tidy position, and lines up with other rooms' walls
+          const cs = [], gs = []; S.rooms.forEach(q => { if (q.id !== d.r.id) q.points.forEach(p => cs.push(horiz ? p[1] : p[0])); });
+          let pos = snapTo((horiz ? a[1] + t * nz : a[0] + t * nx), 0.1); if (!e.altKey) { const sn = snapEdge(pos, cs, gs); if (sn != null) pos = sn; S.guides = horiz ? { x: [], z: gs } : { x: gs, z: [] }; }
+          t = horiz ? (pos - a[1]) / nz : (pos - a[0]) / nx;
+        } else t = snapTo(t, 0.1);
+        const pts = o.map(q => q.slice()), j = (d.i + 1) % n; pts[d.i] = [r2(a[0] + nx * t), r2(a[1] + nz * t)]; pts[j] = [r2(b[0] + nx * t), r2(b[1] + nz * t)];
+        d.r.points = pts; if (Math.abs(t) > 0.001) d.moved = true; draw();
+      }
       else if (d.kind === "room") {
         const r = room(d.id); if (!r) return; let dx = snapTo(w.x - d.wx, 0.05), dz = snapTo(w.z - d.wz, 0.05);
         if (!e.altKey) {   // the room's edges stick to other rooms' corners
@@ -389,6 +402,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (d.kind === "unit" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
       if ((d.kind === "tap" || (d.kind === "unit" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // clicking the same spot again picks what is underneath
       if ((d.kind === "unit" || d.kind === "resize") && d.moved) { const u = unit(d.id); snapUnit(d.orig); try { await saveUnit(u); paintProps(); } catch (e) { Object.assign(u, d.orig); S.undo.pop(); paintUndo(); } draw(); }
+      else if (d.kind === "edge" && d.moved) { snapUndo({ kind: "room", id: d.r.id, points: d.orig }); try { await saveRoom(d.r); } catch (err) { d.r.points = d.orig; S.undo.pop(); paintUndo(); } paintProps(); fitFront(); draw(); }
       else if (d.kind === "vertex" && d.moved) { snapUndo({ kind: "room", id: d.r.id, points: d.orig }); try { await saveRoom(d.r); } catch (e) { d.r.points = d.orig; S.undo.pop(); paintUndo(); } paintProps(); draw(); }
       else draw();
     };
@@ -649,7 +663,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (s && s.kind === "room") {
       const r = room(s.id); if (!r) return; const inside = tops().filter(u => roomOf(u) === r);
       el.innerHTML = `<h2>${esc(r.name)} <span class="chipk">Room</span></h2><p class="hint">${r2(area(r.points))} m² · ${r.points.length} corners · walls ${r.h} m high · ${inside.length} unit${inside.length === 1 ? "" : "s"} inside</p>
-        <p>Drag the room itself on the top view to move it with everything inside, or a corner to reshape it. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
+        <p>Drag the room itself on the top view to move it with everything inside. Drag a wall to push it in or out, or a corner to reshape it. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
         <div class="row"><button class="btn" id="rTurnL">↺ Turn room</button><button class="btn" id="rTurnR">Turn room ↻</button></div>
         <p class="hint">Turns the room and the ${inside.length} unit${inside.length === 1 ? "" : "s"} inside it together, a quarter turn at a time.</p>
         <div class="row" style="align-items:center;gap:16px;margin:8px 0"><div class="nudge" role="group" aria-label="Move the room and its units"><span></span><button type="button" data-rn="0,-1" aria-label="Up">▲</button><span></span><button type="button" data-rn="-1,0" aria-label="Left">◀</button><span></span><button type="button" data-rn="1,0" aria-label="Right">▶</button><span></span><button type="button" data-rn="0,1" aria-label="Down">▼</button><span></span></div>
@@ -908,20 +922,23 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function paintSide() {
     const el = $("#s3Side"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     const find = `<div class="field"><label for="sFind">What are you looking for?</label><input id="sFind" type="text" placeholder="e.g. cutter, M6, screw" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:8px"></div>`;
-    if (!u) { el.innerHTML = find + `<p class="hint" style="margin-top:12px">Or click a shelf or cabinet in the 3D view to see what is inside.</p>`; bindFind(); showRes(); return; }
+    if (!u) { el.innerHTML = find + `<p class="hint" style="margin-top:12px">Or click a shelf, cabinet or box in the 3D view to see what is inside, and to add things to it.</p>`; bindFind(); showRes(); return; }
     const rm = roomOf(u), p = parentOf(u), hi = x => S.focusItem === x.kind + ":" + x.it.id ? "font-weight:700" : "";
-    const itemRows = its => its.map(x => `<div style="font-size:14px;${hi(x)}"><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : "#2FB3B3"}"></i>${esc(itemName(x))}${x.kind === "tool" && x.it.status === "out" ? " (out)" : ""}</div>`).join("");
+    const itemRows = its => its.map(x => `<div style="font-size:14px;${hi(x)}"><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${x.kind === "tool" && x.it.status === "out" ? " (out)" : ""}</div>`).join("");
+    const addBtn = (label, attr) => state.user ? `<button class="btn sec" ${attr} style="padding:2px 10px;font-size:14px">＋ ${label}</button>` : "";
     let body;
-    if (p) body = (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px"><button class="btn sec" id="sRack">Show the rack</button></div>`;
+    if (p) body = (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px">${addBtn("Add to this box", `data-here="1"`)}<button class="btn sec" id="sRack">Show the rack</button></div>`;
     else body = Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => {
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
-      return its.length || bx.length ? `<div style="border-top:1px solid var(--line);padding:6px 0"><strong>Level ${lv}</strong>${itemRows(its)}${bx.map(b => `<div style="margin-top:4px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">▢ ${esc(b.name)}</button>${itemRows(itemsAt(b.id)) || `<div class="hint" style="margin:0 0 0 14px">empty</div>`}</div>`).join("")}</div>` : "";
-    }).join("") || `<p class="hint">Nothing stored here yet.</p>`;
+      return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>Level ${lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => `<div style="margin-top:4px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">▢ ${esc(b.name)}</button>${addBtn("Add", `data-herebox="${b.id}"`)}</div>${itemRows(itemsAt(b.id)) || `<div class="hint" style="margin:0 0 0 14px">empty</div>`}</div>`).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
+    }).join("");
     el.innerHTML = find + `<h2 style="margin-top:16px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
       <div class="row" style="margin-top:10px"><button class="btn sec" id="sEdit">Edit in space plan</button></div>`;
     bindFind(); showRes(); $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
     if ($("#sRack")) $("#sRack").onclick = () => { S.hl = p.id; S.sel = { kind: "unit", id: p.id }; focusUnit(p.id); paintSide(); };
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.hl = b.dataset.box; S.sel = { kind: "unit", id: S.hl }; focusUnit(S.hl); paintSide(); });
+    el.querySelectorAll("[data-here]").forEach(b => b.onclick = () => requireAuth(() => addHere(u.id, Number(b.dataset.here))));
+    el.querySelectorAll("[data-herebox]").forEach(b => b.onclick = () => requireAuth(() => addHere(b.dataset.herebox, 1)));
   }
   function bindFind() { const i = $("#sFind"); if (!i) return; i.oninput = () => { S.find = i.value; showRes(); }; }
   function showRes() {

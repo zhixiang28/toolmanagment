@@ -657,6 +657,29 @@ function paintSheet() {
   bindPlace("sp");
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
+const againHtml = id => `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="${id}"> Add another here after saving</label>`;
+/* Add something to a shelf, cabinet or box straight from the Find page: new consumable, new tool, or one that is already in the app */
+function addHere(unitId, level) {
+  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Add to ${esc(where)}</h2></div><div class="dlg-b"><p style="margin:0">What are you putting here?</p>
+    <div style="display:grid;gap:8px"><button type="button" class="btn" id="ah-c">New consumable <span style="font-weight:400">(screws, nuts, washers...)</span></button><button type="button" class="btn" id="ah-t">New tool</button><button type="button" class="btn sec" id="ah-e">Something already in the app</button></div></div>
+    <div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`;
+  if (!d.open) d.showModal();
+  $("#ah-c").onclick = () => { state.placeDefault = { unit_id: unitId, level }; itemDialog(null); };
+  $("#ah-t").onclick = () => { state.placeDefault = { unit_id: unitId, level }; openDialog(null); };
+  $("#ah-e").onclick = () => placeExisting(unitId, level);
+}
+function placeExisting(unitId, level) {
+  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  const rows = () => { const q = ($("#pe-q")?.value || "").toLowerCase(), list = allEntries().filter(({ it }) => !q || fullName(it).toLowerCase().includes(q)).sort((a, b) => (a.it.unit_id ? 1 : 0) - (b.it.unit_id ? 1 : 0) || a.it.name.localeCompare(b.it.name)).slice(0, 40);
+    return list.length ? list.map(({ kind, it }) => `<li><div class="nm"><strong>${esc(fullName(it))}</strong><div class="sub">${kindName(kind)} · ${it.unit_id === unitId && Number(it.level) === Number(level) ? "already here" : esc(whereText(it) || "not placed yet")}</div></div>${it.unit_id === unitId && Number(it.level) === Number(level) ? `<span class="chip in">Here</span>` : `<button type="button" class="btn sec" data-pk="${kind}:${it.id}">Place here</button>`}</li>`).join("") : `<li><div class="nm hint">Nothing matches.</div></li>`; };
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Place in ${esc(where)}</h2></div><div class="dlg-b"><div><label for="pe-q">Search</label><input id="pe-q" type="search" placeholder="name or size" autocomplete="off"></div><ul class="res" id="pe-l" style="max-height:46vh;overflow:auto">${rows()}</ul><p class="hint">Items not placed yet are listed first.</p></div>
+    <div class="dlg-f"><button type="submit" class="btn">Done</button></div></form>`;
+  if (!d.open) d.showModal();
+  const bind = () => $("#pe-l").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => requireAuth(async () => { const i = b.dataset.pk.indexOf(":"), kind = b.dataset.pk.slice(0, i), id = b.dataset.pk.slice(i + 1);
+    try { await guard(rpcAuth("toolscale_space_place", { p_kind: kind, p_id: id, p_unit: unitId, p_level: level })); await refreshAll(); $("#pe-l").innerHTML = rows(); bind(); toast("Placed"); } catch (e) {} }));
+  $("#pe-q").oninput = () => { $("#pe-l").innerHTML = rows(); bind(); }; bind();
+}
 const unitById = id => (state.spaceUnits || []).find(x => x.id === id);
 function roomOfUnit(u) {
   const b = (u.parent_id && unitById(u.parent_id)) || u;   // a box on a rack is in the rack's room
@@ -715,18 +738,19 @@ function openDialog(tool, prefill) {
   d.innerHTML = `<form method="dialog" id="toolForm"><div class="dlg-h"><h2>${tool ? "Edit tool" : prefill ? "Save as new tool" : "Add tool"}</h2></div>
   <div class="dlg-b">
     <div><label for="f_name">Name</label><input id="f_name" type="text" required maxlength="60" value="${esc(tool?.name || "")}"></div>
-    ${placeHtml(tool, "fp")}
+    ${placeHtml(tool || state.placeDefault || null, "fp")}
     <div><label for="f_slot">Spot label (optional)</label><input id="f_slot" type="text" maxlength="60" placeholder="e.g. Drawer 2, top tray" value="${esc(tool?.slot || "")}"><p class="hint">Shown on the board tile when the tool has no shelf.</p></div>
     <div class="row"><div class="field"><label for="f_w">Weight (g)</label><input id="f_w" type="number" step="0.1" min="0.5" required value="${tool ? tool.weight_g : prefill ? prefill.weight : ""}"></div>
       <div class="field"><label for="f_t">Match window &plusmn; (g)</label><input id="f_t" type="number" step="0.5" min="0.5" required value="${tool ? tool.tol_g : 3}"></div></div>
     ${prefill ? `<p class="hint">Weight comes from one reading of ${fmtG(prefill.weight)} g. Use Start teaching below to refine it.</p>` : ""}
+    ${state.placeDefault && !tool ? againHtml("f_again") : ""}
     ${purchaseHtml(tool, "p")}
     <div class="teach" id="teachBox"></div>
   </div>
   <div class="dlg-f">${tool ? `<button type="button" class="btn danger" id="f_del" style="margin-right:auto">Delete</button>` : ""}
     <button type="button" class="btn sec" id="f_cancel">Cancel</button><button type="submit" class="btn" id="f_save">Save tool</button></div></form>`;
   renderTeach(); bindPlace("fp"); if (!d.open) d.showModal();
-  $("#f_cancel").onclick = closeDialog; d.oncancel = () => stopTeach();
+  $("#f_cancel").onclick = closeDialog; d.oncancel = () => { stopTeach(); state.placeDefault = null; };
   $("#f_del")?.addEventListener("click", async () => {
     if (!confirm(`Delete ${tool.name}? Its history stays in the activity log.`)) return;
     await guard(rpcAuth("toolscale_delete_tool", { p_id: tool.id })); await refreshAll(); closeDialog();
@@ -738,10 +762,12 @@ function openDialog(tool, prefill) {
     const tid = await guard(rpcAuth("toolscale_save_tool", { p_id: tool ? tool.id : null, p_name: row.name, p_slot: row.slot, p_weight: row.weight_g, p_tol: row.tol_g, p_out: !tool && !!state.prefill?.out }));
     await guard(rpcAuth("toolscale_set_purchase", { p_kind: "tool", p_id: tid, ...readPurchase("p") }));
     await savePlace("tool", tid, "fp", tool);
+    const again = !!$("#f_again")?.checked, pd = state.placeDefault;
     await refreshAll(); closeDialog(); toast(tool ? "Saved" : row.name + " added");
+    if (again && pd) setTimeout(() => { state.placeDefault = pd; openDialog(null); }, 40);
   };
 }
-function closeDialog() { stopTeach(); $("#dlg").close(); renderTab(); }
+function closeDialog() { stopTeach(); state.placeDefault = null; $("#dlg").close(); if (state.tab !== "s3d") renderTab(); }   // the Find page repaints itself, so its camera stays where it is
 
 /* teach-by-weighing */
 function renderTeach() {
@@ -962,13 +988,14 @@ function itemDialog(item) {
       <div class="field"><label for="i_c">Empty bin (g)</label><input id="i_c" type="number" step="0.1" min="0" required value="${item ? item.container_g : 0}"></div></div>
     <div class="row"><div class="field"><label for="i_m">Reorder at or below</label><input id="i_m" type="number" step="1" min="0" value="${item ? item.min_stock : 0}"></div>
       <div class="field"><label for="i_l">Spot label (optional)</label><input id="i_l" type="text" maxlength="60" placeholder="e.g. Bin 4" value="${esc(item?.location || "")}"></div></div>
-    ${placeHtml(item, "ip")}
+    ${placeHtml(item || state.placeDefault || null, "ip")}
     ${item ? "" : `<div><label for="i_n">Starting count (optional)</label><input id="i_n" type="number" step="1" min="0" placeholder="leave empty if unknown"></div>`}
+    ${state.placeDefault && !item ? againHtml("i_again") : ""}
     ${purchaseHtml(item, "q")}
     <p class="hint">Not sure of the weight per piece? Save a guess, then use Learn weight per piece on Stock, Count by weight.</p></div>
   <div class="dlg-f">${item ? `<button type="button" class="btn danger" id="i_del" style="margin-right:auto">Hide</button>` : ""}<button type="button" class="btn sec" id="i_cancel">Cancel</button><button type="submit" class="btn">Save item</button></div></form>`;
   if (!d.open) d.showModal(); bindPlace("ip");
-  $("#i_cancel").onclick = () => d.close();
+  $("#i_cancel").onclick = () => { state.placeDefault = null; d.close(); }; d.oncancel = () => { state.placeDefault = null; };
   $("#i_del")?.addEventListener("click", async () => {
     if (!confirm(`Hide ${item.name}? Its history is kept.`)) return;
     try { await guard(rpcAuth("toolscale_consumable_hide", { p_id: item.id })); await refreshAll(); d.close(); renderTab(); } catch (e) {}
@@ -981,7 +1008,9 @@ function itemDialog(item) {
         p_unit_g: Number($("#i_u").value), p_container_g: Number($("#i_c").value), p_min_stock: Number($("#i_m").value || 0), p_location: $("#i_l").value, p_count: n === "" || n == null ? null : Number(n) }));
       await guard(rpcAuth("toolscale_set_purchase", { p_kind: "consumable", p_id: id, ...readPurchase("q") }));
       await savePlace("consumable", id, "ip", item);
-      state.countItem = state.countItem || id; await refreshAll(); d.close(); renderTab(); toast("Saved");
+      const again = !!$("#i_again")?.checked, pd = state.placeDefault; state.placeDefault = null;
+      state.countItem = state.countItem || id; await refreshAll(); d.close(); if (state.tab !== "s3d") renderTab(); toast("Saved");
+      if (again && pd) setTimeout(() => { state.placeDefault = pd; itemDialog(null); }, 40);
     } catch (err) {}
   };
 }
@@ -1048,7 +1077,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "24";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "26";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();

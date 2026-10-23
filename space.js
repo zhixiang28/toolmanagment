@@ -19,7 +19,7 @@
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
   const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
-  const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
+  const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.cols = r.cols == null ? null : Number(r.cols); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
   const unit = id => S.units.find(u => u.id === id), room = id => S.rooms.find(r => r.id === id);
   /* which way is "right along the front" (R) and "towards the back" (F) for each way a unit can face */
@@ -30,6 +30,8 @@
   const clashes = u => tops().filter(o => o.id !== u.id && o.kind !== "rack" && u.kind !== "rack" && overlaps2d(u, o) && vrange(u)[0] < vrange(o)[1] - 0.001 && vrange(o)[0] < vrange(u)[1] - 0.001);
   const parentOf = b => b.parent_id ? unit(b.parent_id) : null;
   const kids = r => S.units.filter(b => b.parent_id === r.id).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
+  const rootOf = u => { let x = u, n = 0; while (x && x.parent_id && unit(x.parent_id) && n++ < 10) x = unit(x.parent_id); return x; };   // the rack (or unit) a stack of boxes ends up on
+  const secCols = b => b.cols || Math.max(1, Math.min(b.levels, Math.round(Math.sqrt(b.levels * b.w / Math.max(b.d, 0.05)))));   // how many sections run across a box
   const tops = () => S.units.filter(u => !parentOf(u));
   /* more than one unit can be selected (Shift or Ctrl click, Shift-drag a box, Ctrl+A); S.sel is then the last one picked */
   const group = () => { const ids = S.multi.length > 1 ? S.multi : (S.sel && S.sel.kind === "unit" ? [S.sel.id] : []); return ids.map(unit).filter(Boolean); };
@@ -47,30 +49,59 @@
     for (const u of units) { const f = fp(u), c = rp(f.x + f.w / 2, f.z + f.d / 2); u.rot = (u.rot + (dir > 0 ? 90 : 270)) % 360; const g = fp(u); u.x = r2(c[0] - g.w / 2); u.z = r2(c[1] - g.d / 2); }
   }   // boxes on a rack live inside the rack, not on the floor plan
   /* boxes sit on a rack level in the order they were added, left to right */
-  function boxLayout(r) {
-    const f = fp(r), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[r.rot] || DIR[0], lh = r.h / r.levels, T = 0.03, acc = {}, out = [];
+  function boxLayout(r) {   // every box on a rack, including boxes stacked on other boxes
+    const f = fp(r), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[r.rot] || DIR[0], lh = r.h / r.levels, T = 0.03, acc = {}, out = [], alongX = D.R[0] !== 0;
+    const stack = (pe, depth) => {
+      if (depth > 8) return; let a = 0;
+      for (const c of kids(pe.b)) {
+        const left = a, along = -pe.b.w / 2 + left + c.w / 2, y = pe.y + pe.h; a += c.w + 0.01;
+        const e = { b: c, L: pe.L, left, depth, parentId: pe.b.id, cx: pe.cx + D.R[0] * along, cz: pe.cz + D.R[1] * along, y, wx: alongX ? c.w : c.d, wz: alongX ? c.d : c.w, h: c.h, over: left + c.w > pe.b.w + 0.001 || c.d > pe.b.d + 0.001 || y + c.h > r.elev + pe.L * lh + 0.001 };
+        out.push(e); stack(e, depth + 1);
+      }
+    };
     for (const b of kids(r)) {
-      const L = clamp(b.parent_level || 1, 1, r.levels); acc[L] = acc[L] ?? 0.02; const left = acc[L], along = -r.w / 2 + left + b.w / 2; acc[L] += b.w + 0.02;
-      const alongX = D.R[0] !== 0;
-      out.push({ b, L, left, cx: cx + D.R[0] * along, cz: cz + D.R[1] * along, y: r.elev + (L - 1) * lh + T, wx: alongX ? b.w : b.d, wz: alongX ? b.d : b.w, h: b.h, over: left + b.w > r.w + 0.001 || b.d > r.d + 0.001 || b.h > lh - T + 0.001 });
+      const L = clamp(b.parent_level || 1, 1, r.levels); acc[L] = acc[L] ?? 0.02; const left = acc[L], along = -r.w / 2 + left + b.w / 2, y = r.elev + (L - 1) * lh + T; acc[L] += b.w + 0.02;
+      const e = { b, L, left, depth: 0, parentId: r.id, cx: cx + D.R[0] * along, cz: cz + D.R[1] * along, y, wx: alongX ? b.w : b.d, wz: alongX ? b.d : b.w, h: b.h, over: left + b.w > r.w + 0.001 || b.d > r.d + 0.001 || y + b.h > r.elev + L * lh + 0.001 };
+      out.push(e); stack(e, 1);
     }
     return out;
   }
+  /* assets on a table: level 1 stands on the top, level 2 stands on the floor under it. Both go left to right, then row by row towards the back; a set left-edge position wins */
+  function assetLayout(t) {
+    const f = fp(t), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[t.rot] || DIR[0], alongX = D.R[0] !== 0, out = [];
+    const all = (state.assets || []).filter(a => a.unit_id === t.id).sort((a, b) => (a.ox == null) - (b.ox == null) || (a.ox ?? 0) - (b.ox ?? 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    const lay = (list, under) => {
+      const base = (t.elev || 0) + (under ? 0 : t.h), inset = under ? 0.08 : 0.03, clear = under ? t.h - 0.06 : 1e9; let x = inset, z = inset, rowD = 0;
+      for (const a of list) {
+        const w = Number(a.w), d = Number(a.d), h = Number(a.h); let left = a.ox != null ? Number(a.ox) : x, row = z;
+        if (a.ox == null) { if (left + w > t.w - inset && left > inset + 0.01) { x = inset; z += rowD + 0.02; rowD = 0; left = x; row = z; } x = left + w + 0.03; rowD = Math.max(rowD, d); }
+        const along = -t.w / 2 + left + w / 2, back = -t.d / 2 + row + d / 2;
+        out.push({ a, under, cx: cx + D.R[0] * along + D.F[0] * back, cz: cz + D.R[1] * along + D.F[1] * back, y: base, wx: alongX ? w : d, wz: alongX ? d : w, h, over: left + w > t.w + 0.001 || row + d > t.d + 0.001 || h > clear + 0.001 });
+      }
+    };
+    lay(all.filter(a => Number(a.level) !== 2), false); lay(all.filter(a => Number(a.level) === 2), true); return out;
+  }
+  function assetEntry(aid) { const a = (state.assets || []).find(x => x.id === aid), t = a && a.unit_id && unit(a.unit_id); return t && isTable(t) ? assetLayout(t).find(e => e.a.id === aid) : null; }
+  const assetCol = a => a.color || "#7A8DA8";
   function anchor(u) {   // where a unit is in space: centre on the floor plan and bottom and top heights
     const p = parentOf(u);
-    if (p) { const e = boxLayout(p).find(x => x.b.id === u.id); if (e) return { x: e.cx, z: e.cz, y0: e.y, y1: e.y + e.h, w: e.wx, d: e.wz }; }
+    if (p) { const e = boxLayout(rootOf(u)).find(x => x.b.id === u.id); if (e) return { x: e.cx, z: e.cz, y0: e.y, y1: e.y + e.h, w: e.wx, d: e.wz }; }
     const f = fp(u); return { x: f.x + f.w / 2, z: f.z + f.d / 2, y0: u.elev || 0, y1: (u.elev || 0) + u.h, w: f.w, d: f.d };
   }
   const loadScript = src => new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); });
-  const allItems = () => [...state.tools.map(it => ({ kind: "tool", it })), ...state.citems.map(it => ({ kind: "consumable", it }))];
+  const allItems = () => [...state.tools.map(it => ({ kind: "tool", it })), ...state.citems.map(it => ({ kind: "consumable", it })), ...(state.assets || []).map(it => ({ kind: "asset", it }))];
   const itemsAt = (uid, lvl) => allItems().filter(x => x.it.unit_id === uid && (lvl == null || Number(x.it.level) === lvl));
   const itemName = x => x.it.name + (x.it.spec ? " " + x.it.spec : "");
   const inPoly = (x, z, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
   const area = pts => { let a = 0; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]); return Math.abs(a / 2); };
   const centroid = pts => { const n = pts.length; return [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n]; };
-  const roomOf = u => { const b = parentOf(u) || u, f = fp(b), cx = f.x + f.w / 2, cz = f.z + f.d / 2; for (let i = S.rooms.length - 1; i >= 0; i--) if (inPoly(cx, cz, S.rooms[i].points)) return S.rooms[i]; return null; };
-  const unitPath = u => { const p = parentOf(u), r = roomOf(u); return (r ? r.name + " · " : "") + (p ? p.name + " · level " + u.parent_level + " · " : "") + u.name; };
-  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.parent_id ? "" : " · level " + it.level); };
+  const roomOf = u => { const b = rootOf(u), f = fp(b), cx = f.x + f.w / 2, cz = f.z + f.d / 2; for (let i = S.rooms.length - 1; i >= 0; i--) if (inPoly(cx, cz, S.rooms[i].points)) return S.rooms[i]; return null; };
+  const unitPath = u => {
+    const r = roomOf(u), chain = []; let x = u, n = 0; while (x && x.parent_id && unit(x.parent_id) && n++ < 10) { chain.unshift(x); x = unit(x.parent_id); }
+    if (!chain.length) return (r ? r.name + " · " : "") + u.name;
+    return (r ? r.name + " · " : "") + x.name + (x.kind === "rack" ? " · level " + chain[0].parent_level : "") + " · " + chain.map(c => c.name).join(" › ");
+  };
+  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.kind === "box" ? (u.levels > 1 ? " · section " + it.level : "") : isTable(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level); };
   const contents = u => [...itemsAt(u.id), ...kids(u).flatMap(b => itemsAt(b.id))];
 
   async function load() {
@@ -79,7 +110,7 @@
     if (S.sel && !(S.sel.kind === "unit" ? unit(S.sel.id) : room(S.sel.id))) S.sel = null;
   }
   const saveRoom = r => guard(rpcAuth("toolscale_space_room_poly", { p_id: r.id || null, p_name: r.name, p_points: r.points.map(p => [r2(p[0]), r2(p[1])]), p_h: r2(r.h) }));
-  const saveUnit = u => { const rm = roomOf(u), p = parentOf(u); if (p) { u.x = p.x; u.z = p.z; } return guard(rpcAuth("toolscale_space_unit_v2", { p_id: u.id || null, p_room: rm ? rm.id : null, p_kind: u.kind, p_name: u.name, p_x: r2(u.x), p_z: r2(u.z), p_w: r2(u.w), p_d: r2(u.d), p_h: r2(u.h), p_rot: u.rot, p_levels: u.levels, p_color: u.color || null, p_elev: r2(u.elev || 0), p_parent: u.parent_id || null, p_plevel: u.parent_id ? (u.parent_level || 1) : null })); };
+  const saveUnit = u => { const rm = roomOf(u); if (u.parent_id) { const rt = rootOf(u); u.x = rt.x; u.z = rt.z; } return guard(rpcAuth("toolscale_space_unit_v3", { p_cols: u.cols || null, p_id: u.id || null, p_room: rm ? rm.id : null, p_kind: u.kind, p_name: u.name, p_x: r2(u.x), p_z: r2(u.z), p_w: r2(u.w), p_d: r2(u.d), p_h: r2(u.h), p_rot: u.rot, p_levels: u.levels, p_color: u.color || null, p_elev: r2(u.elev || 0), p_parent: u.parent_id || null, p_plevel: u.parent_id ? (u.parent_level || 1) : null })); };
   /* edits save a moment after the last change, so dragging a slider or typing a size does not send a request on every keystroke */
   const saveMany = us => Promise.all(us.filter(Boolean).map(u => saveUnit(u)));
   function scheduleSave(u) { clearTimeout(S.saveT); S.pending = u; S.saveT = setTimeout(flushSave, 600); }
@@ -174,6 +205,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
 .nudge button,.nbtn{min-height:40px;border:2px solid var(--ink);background:#fff;cursor:pointer;font-weight:700;padding:0 8px}
 .nudge button:active,.nbtn:active{background:var(--hivis)}
 .sw{width:26px;height:26px;border:1px solid #14232B;cursor:pointer;padding:0}.mini{width:38px;padding:0;min-height:42px}
+.secg{display:grid;gap:4px}.secc{border:1px solid var(--line);background:#fff;padding:4px 6px;min-height:40px;font-size:12px;overflow:hidden}.secc b{display:block;font-size:14px}.secc.on{border-color:var(--hivis);background:#FFF4C2}
 .bxr{display:flex;gap:6px;align-items:center;justify-content:space-between;border:1px solid var(--line);background:#fff;padding:4px 8px;margin:3px 0;font-size:14px;cursor:pointer;width:100%;text-align:left}.bxr.over{border-color:var(--alert)}`;
     document.head.appendChild(st);
   }
@@ -279,6 +311,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       g.strokeStyle = lt ? "#14232B" : "#fff"; g.lineWidth = 3; g.beginPath();   // the front edge
       if (u.rot === 0) { g.moveTo(x + 3, y + h - 2); g.lineTo(x + w - 3, y + h - 2); } else if (u.rot === 90) { g.moveTo(x + 2, y + 3); g.lineTo(x + 2, y + h - 3); } else if (u.rot === 180) { g.moveTo(x + 3, y + 2); g.lineTo(x + w - 3, y + 2); } else { g.moveTo(x + w - 2, y + 3); g.lineTo(x + w - 2, y + h - 3); } g.stroke();
       g.save(); g.beginPath(); g.rect(x + 3, y + 3, w - 6, h - 6); g.clip(); g.fillStyle = lt ? "#14232B" : "#fff"; g.font = "600 12px sans-serif"; g.textBaseline = "top"; g.fillText(u.name + (u.elev > 0 && !isTable(u) ? " ↑" + cm(u.elev) : ""), x + 6, y + 6); if (n && h > 34) { g.font = "11px sans-serif"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x + 6, y + 21); } g.restore();
+    }
+    for (const t of tops().filter(isTable)) for (const e of assetLayout(t)) {
+      const x = sx(e.cx - e.wx / 2), y = sy(e.cz - e.wz / 2), w = e.wx * p, h = e.wz * p, col = assetCol(e.a);
+      g.save(); if (e.under) { g.globalAlpha = .75; g.setLineDash([4, 3]); } g.fillStyle = col; g.fillRect(x, y, w, h); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = e.over ? 2 : 1; g.strokeRect(x, y, w, h); g.restore();
+      if (w > 24 && h > 12) { g.save(); g.beginPath(); g.rect(x + 1, y + 1, w - 2, h - 2); g.clip(); g.fillStyle = light(col) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textBaseline = "top"; g.textAlign = "left"; g.fillText(e.a.name, x + 3, y + 3); g.restore(); }
     }
     if (S.multi.length > 1) { const gs = group(), sp = spanOf(gs); g.save(); g.strokeStyle = "#F2C200"; g.lineWidth = 2; g.setLineDash([8, 5]); g.strokeRect(sx(sp.x0) - 5, sy(sp.z0) - 5, (sp.x1 - sp.x0) * p + 10, (sp.z1 - sp.z0) * p + 10); g.restore(); dimLabel(g, gs.length + " selected", (sx(sp.x0) + sx(sp.x1)) / 2, sy(sp.z0) - 16, false); }
     if (S.marq) { const x = Math.min(S.marq.x0, S.marq.x1), z = Math.min(S.marq.z0, S.marq.z1), w = Math.abs(S.marq.x1 - S.marq.x0), d = Math.abs(S.marq.z1 - S.marq.z0); g.save(); g.fillStyle = "rgba(36,96,122,.15)"; g.strokeStyle = "#24607A"; g.lineWidth = 1.5; g.setLineDash([6, 4]); g.fillRect(sx(x), sy(z), w * p, d * p); g.strokeRect(sx(x), sy(z), w * p, d * p); g.restore(); }
@@ -453,6 +490,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (isTable(u)) {
       const bench = u.kind === "bench", t = Math.max(5, (bench ? 0.05 : 0.035) * E.ppm), lw = Math.max(5, (bench ? 0.07 : 0.05) * E.ppm); g.fillStyle = col; g.fillRect(x, yT, w, t); g.strokeRect(x, yT, w, t);
       g.fillRect(x + 3, yT + t, lw, yB - yT - t); g.fillRect(x + w - 3 - lw, yT + t, lw, yB - yT - t); g.strokeRect(x + 3, yT + t, lw, yB - yT - t); g.strokeRect(x + w - 3 - lw, yT + t, lw, yB - yT - t);
+      for (const e of assetLayout(u)) { const sp = boxSpan(e), ah = hext(sp[0], sp[1]), ax = esx(ah[0]), aw = (ah[1] - ah[0]) * E.ppm, ay = esy(e.y + e.h), ahh = e.h * E.ppm, ac = assetCol(e.a); g.fillStyle = ac; g.fillRect(ax, ay, aw, ahh); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = 1.2; g.strokeRect(ax, ay, aw, ahh); if (aw > 34 && ahh > 11) { g.save(); g.beginPath(); g.rect(ax, ay, aw, ahh); g.clip(); g.fillStyle = light(ac) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(e.a.name, ax + 3, ay + ahh / 2); g.restore(); } }
     } else if (u.kind === "rack") {
       const L = u.levels, lh = (yB - yT) / L, T = Math.max(3, 0.03 * E.ppm); g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x, yT, w, yB - yT); g.fillStyle = col;
       for (let i = 0; i <= L; i++) g.fillRect(x, i === L ? yT : yB - lh * i - T, w, T); g.fillRect(x, yT, 4, yB - yT); g.fillRect(x + w - 4, yT, 4, yB - yT);
@@ -700,8 +738,9 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       <p class="hint">Snap to wall puts the back against the nearest straight wall.${lift ? " Mount on wall also lifts it 120 cm." : ""} Turn rotates the whole unit; picking a front side keeps the shape in place.</p>`;
     const underCab = !desk && !rack && u.elev > 0 ? sec("undercab", "Under this cabinet", `<p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
         <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div>`) : "";
+    const onTable = desk ? sec("ontable", "On the " + (u.kind === "bench" ? "bench" : "desk"), `${assetLayout(u).length ? assetLayout(u).map(e => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:2px 0"><button type="button" class="linkname" data-act="sheet" data-kind="asset" data-id="${e.a.id}">${esc(e.a.name)}</button><span class="hint" style="margin:0${e.over ? ";color:var(--alert)" : ""}">${e.under ? "under · " : ""}${Math.round(e.a.w * 100)}×${Math.round(e.a.d * 100)}×${Math.round(e.a.h * 100)} cm${e.over ? " · does not fit" : ""}</span></div>`).join("") : `<p class="hint" style="margin:0 0 8px">Nothing on it yet.</p>`}<div class="row" style="margin-top:8px"><button type="button" class="btn sec" data-act="asset-add-here" data-unit="${u.id}" data-level="1">＋ On the top</button><button type="button" class="btn sec" data-act="asset-add-here" data-unit="${u.id}" data-level="2">＋ Under the table</button></div><p class="hint">Assets are equipment such as a PC or an oscilloscope. They stand in a line from the left, on the top or on the floor under the table (a PC tower, for example).</p>`) : "";
     const underDesk = desk ? sec("underdesk", "Under the " + (u.kind === "bench" ? "bench" : "desk"), `<p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button>`) : "";
-    const boxesHtml = rack ? sec("boxes", "Boxes on this rack", `${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}"><span>${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it under Setup, Place items.</p>`}
+    const boxesHtml = rack ? sec("boxes", "Boxes on this rack", `${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}" style="margin-left:${e.depth * 14}px"><span>${e.depth ? "↳ " : ""}${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${e.b.levels > 1 ? " · " + e.b.levels + " sections" : ""}${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it under Setup, Place items.</p>`}
         <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="min-width:90px;max-width:130px"><label for="bxL">Put on level</label><select id="bxL" class="sel">${Array.from({ length: u.levels }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></div><button type="button" class="btn" id="bxAdd">Add a box</button></div>`) : "";
     el.innerHTML = `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
       ${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
@@ -709,7 +748,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         <div class="field" style="min-width:120px;max-width:150px"><label for="uKind">Type</label><select id="uKind" class="sel">${types}</select></div></div>
       <p class="hint">${rm ? "In " + esc(rm.name) : "Not inside a room"}${u.elev > 0 && !desk ? " · hangs " + cm(u.elev) + " cm above the floor" : ""}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " stored" : ""}</p>
       ${clash.length ? `<p class="status-line err" style="margin:6px 0">Overlaps ${esc(clash.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""}
-      ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${desk ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${underCab}${underDesk}${boxesHtml}
+      ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${onTable}${desk ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${underCab}${underDesk}${boxesHtml}
       ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`)}
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
@@ -764,33 +803,59 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#gClear").onclick = () => { S.multi = []; S.sel = null; paintProps(); draw(); };
     $("#gDel").onclick = () => requireAuth(() => removeMany(gs));
   }
-  async function addBox(rack, level) {
-    await flushSave(); const lh = rack.h / rack.levels, n = kids(rack).length + 1;
-    const b = { kind: "box", name: "Box " + n, w: 0.4, d: Math.min(0.3, rack.d), h: Math.max(0.1, Math.min(0.25, lh - 0.04)), rot: 0, levels: 1, color: null, elev: 0, parent_id: rack.id, parent_level: level, x: rack.x, z: rack.z };
+  async function addBox(parent, level) {
+    await flushSave(); const onRack = parent.kind === "rack", lh = parent.h / (parent.levels || 1), n = S.units.filter(x => x.kind === "box").length + 1, rt = rootOf(parent);
+    const dims = onRack ? { w: 0.4, d: Math.min(0.3, parent.d), h: Math.max(0.1, Math.min(0.25, lh - 0.04)) } : { w: parent.w, d: parent.d, h: 0.2 };
+    const b = { kind: "box", name: "Box " + n, ...dims, rot: 0, levels: 1, cols: null, color: null, elev: 0, parent_id: parent.id, parent_level: onRack ? level : 1, x: rt.x, z: rt.z };
     try { const id = await saveUnit(b); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); } catch (e) {}
   }
+  const secMapHtml = (u, withItems) => {   // the sections of a box seen from above, front of the box at the bottom
+    const n = u.levels, c = Math.min(secCols(u), n), rows = Math.ceil(n / c), fo = (S.focusItem || "").split(":"), fi = allItems().find(x => x.kind === fo[0] && String(x.it.id) === fo[1]), cells = [];
+    for (let r = rows - 1; r >= 0; r--) for (let k = 0; k < c; k++) {
+      const i = r * c + k + 1; if (i > n) { cells.push("<div></div>"); continue; }
+      const its = itemsAt(u.id, i);
+      cells.push(`<div class="secc ${fi && fi.it.unit_id === u.id && Number(fi.it.level) === i ? "on" : ""}"><b>${i}</b>${withItems ? its.slice(0, 3).map(x => esc(itemName(x))).join("<br>") + (its.length > 3 ? "<br>+" + (its.length - 3) : "") : (its.length ? its.length + " item" + (its.length > 1 ? "s" : "") : "")}</div>`);
+    }
+    return `<div class="secg" style="grid-template-columns:repeat(${c},1fr)">${cells.join("")}</div><p class="hint" style="margin:4px 0 0">Seen from above, front of the box at the bottom.</p>`;
+  };
   function boxProps(u, el) {
-    const p = parentOf(u), racks = S.units.filter(x => x.kind === "rack"), its = itemsAt(u.id), col = colorOf(u), ro = !state.user, over = boxLayout(p).find(e => e.b.id === u.id)?.over;
+    const p = parentOf(u), root = rootOf(u), its = itemsAt(u.id), col = colorOf(u), ro = !state.user, over = boxLayout(root).find(e => e.b.id === u.id)?.over, onRack = p.kind === "rack", stacked = kids(u);
+    const desc = new Set(); const walk = b => kids(b).forEach(c => { desc.add(c.id); walk(c); }); walk(u);
+    const spots = [...S.units.filter(x => x.kind === "rack").map(r => ({ id: r.id, label: r.name + " (rack)" })), ...S.units.filter(x => x.kind === "box" && x.id !== u.id && !desc.has(x.id) && rootOf(x).kind === "rack").map(b => ({ id: b.id, label: "On top of " + b.name + " (" + rootOf(b).name + ")" }))];
     el.innerHTML = `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
       ${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
       <div class="row"><div class="field"><label for="uName">Box name</label><input id="uName" type="text" maxlength="40" value="${esc(u.name)}"></div></div>
       <p class="hint">${esc(unitPath(u))}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " inside" : ""}</p>
-      ${sec("bxon", "On the rack", `<div class="row"><div class="field" style="min-width:140px"><label for="bxR">Rack</label><select id="bxR" class="sel">${racks.map(r => `<option value="${r.id}" ${r.id === p.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></div>
-        <div class="field" style="min-width:80px;max-width:110px"><label for="bxLv">Level</label><select id="bxLv" class="sel">${Array.from({ length: p.levels }, (_, i) => `<option ${u.parent_level === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div></div>`)}
+      ${sec("bxon", "Sits on", `<div class="row"><div class="field" style="min-width:160px"><label for="bxR">Rack or box</label><select id="bxR" class="sel">${spots.map(r => `<option value="${r.id}" ${r.id === p.id ? "selected" : ""}>${esc(r.label)}</option>`).join("")}</select></div>
+        ${onRack ? `<div class="field" style="min-width:80px;max-width:110px"><label for="bxLv">Level</label><select id="bxLv" class="sel">${Array.from({ length: p.levels }, (_, i) => `<option ${u.parent_level === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}</div>
+        <p class="hint">A box can sit on a rack level or on top of another box, so you can stack them.</p>`)}
+      ${sec("bxsec", "Sections", `<div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="scM" aria-label="One less">−</button><input id="scN" type="number" min="1" max="30" step="1" value="${u.levels}" style="width:70px;text-align:center" aria-label="Sections"><button type="button" class="btn sec mini" id="scP" aria-label="One more">+</button>
+        <div class="field" style="max-width:120px;min-width:90px"><label for="scC">Across</label><input id="scC" type="number" min="1" max="30" step="1" placeholder="auto" value="${u.cols || ""}"></div></div>
+        <p class="hint" style="margin:6px 0">One box can have many sections, for example a screw box with one section for each size. Pick the section when you place an item.</p><div id="secMap">${u.levels > 1 ? secMapHtml(u) : `<p class="hint" style="margin:0">One section: the whole box.</p>`}</div>`)}
       ${sec("bxsize", "Size", `<div class="row"><div class="field" style="min-width:70px"><label for="uW">Width (cm)</label><input id="uW" type="number" step="5" min="10" max="300" value="${cm(u.w)}"></div><div class="field" style="min-width:70px"><label for="uD">Depth (cm)</label><input id="uD" type="number" step="5" min="10" max="300" value="${cm(u.d)}"></div><div class="field" style="min-width:70px"><label for="uH">Height (cm)</label><input id="uH" type="number" step="5" min="10" max="300" value="${cm(u.h)}"></div></div>
         <div style="margin-top:8px"><label for="uPre">Common sizes</label><select id="uPre" class="sel"><option value="">Pick a size...</option>${SIZES_BOX.map(q => `<option value="${q.join(",")}">${q[0]} × ${q[1]} × ${q[2]} cm</option>`).join("")}</select></div>
-        ${over ? `<p class="status-line err">This box does not fit on that level of the rack (too wide, deep or tall).</p>` : ""}`)}
+        ${over ? `<p class="status-line err">This box does not fit where it sits (too wide, deep or tall for the level, or for the box under it).</p>` : ""}`)}
+      ${sec("bxstack", "Stack", `${stacked.length ? stacked.map(c => `<button type="button" class="bxr" data-box="${c.id}"><span>↑ ${esc(c.name)}</span><span class="hint" style="margin:0">${cm(c.w)}×${cm(c.d)}×${cm(c.h)} cm</span></button>`).join("") : `<p class="hint" style="margin:0 0 8px">Nothing stacked on this box.</p>`}<button type="button" class="btn sec" id="bxStack">Stack another box on top</button>`)}
       ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`)}
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="bxBack">Back to ${esc(p.name)}</button><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div></fieldset>
-      ${its.length ? `<p class="hint" style="margin-top:10px">Inside: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing inside yet. Place items in it under Setup, Place items.</p>`}`;
+      ${its.length ? `<p class="hint" style="margin-top:10px">Inside: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing inside yet. Open Find and press Add on this box.</p>`}`;
     bindSecs(el);
     const change = (fn, now) => { if (!state.user) return; burstSnap(u); fn(); draw(); if (now) { clearTimeout(S.saveT); S.pending = u; flushSave(); } else scheduleSave(u); };
     const numIn = (id, key) => { $("#" + id).oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || !(v >= 10 && v <= 300)) return; change(() => { u[key] = r2(v / 100); }); }; };
     numIn("uW", "w"); numIn("uD", "d"); numIn("uH", "h");
     $("#uName").oninput = e => { const v = e.target.value.trim(); if (v) change(() => { u.name = v; }); };
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintProps(); };
-    const move = () => { const r = unit($("#bxR").value), lv = clamp(Number($("#bxLv").value) || 1, 1, r.levels); change(() => { u.parent_id = r.id; u.parent_level = lv; }, true); paintProps(); };
-    $("#bxR").onchange = () => { $("#bxLv").innerHTML = Array.from({ length: unit($("#bxR").value).levels }, (_, i) => `<option>${i + 1}</option>`).join(""); move(); }; $("#bxLv").onchange = move;
+    const move = () => { const r = unit($("#bxR").value), lv = r.kind === "rack" ? clamp(Number($("#bxLv")?.value) || 1, 1, r.levels) : 1; change(() => { u.parent_id = r.id; u.parent_level = lv; }, true); paintProps(); };
+    $("#bxR").onchange = () => { const r = unit($("#bxR").value); if ($("#bxLv") && r.kind === "rack") $("#bxLv").innerHTML = Array.from({ length: r.levels }, (_, i) => `<option>${i + 1}</option>`).join(""); move(); }; if ($("#bxLv")) $("#bxLv").onchange = move;
+    const setSec = v => {
+      v = clamp(Math.round(v) || 1, 1, 30); const used = Math.max(0, ...itemsAt(u.id).map(x => Number(x.it.level) || 0));
+      if (v < used) { toast("There are items in section " + used + ". Move them first."); $("#scN").value = u.levels; return; }
+      $("#scN").value = v; change(() => { u.levels = v; if (u.cols && u.cols > v) { u.cols = v; $("#scC").value = v; } }); $("#secMap").innerHTML = v > 1 ? secMapHtml(u) : `<p class="hint" style="margin:0">One section: the whole box.</p>`;
+    };
+    $("#scN").oninput = e => { if (e.target.value) setSec(Number(e.target.value)); }; $("#scM").onclick = () => setSec(u.levels - 1); $("#scP").onclick = () => setSec(u.levels + 1);
+    $("#scC").oninput = e => { const v = e.target.value === "" ? null : clamp(Math.round(Number(e.target.value)) || 1, 1, 30); change(() => { u.cols = v; }); $("#secMap").innerHTML = u.levels > 1 ? secMapHtml(u) : ""; };
+    $("#bxStack").onclick = () => requireAuth(() => addBox(u, 1));
+    el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.sel = { kind: "unit", id: b.dataset.box }; paintProps(); draw(); });
     el.querySelectorAll(".sw").forEach(b => b.onclick = () => { change(() => { u.color = b.dataset.col; }, true); paintProps(); });
     $("#uCol").oninput = e => change(() => { u.color = e.target.value.toUpperCase(); }); $("#uCol").onchange = () => paintProps();
     $("#uColDef").onclick = () => { change(() => { u.color = null; }, true); paintProps(); };
@@ -871,11 +936,24 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         const [mw, md] = wd(Math.min(0.55, u.w * 0.5), 0.04); addBox3(u, dm, cx + D.F[0] * (u.d / 2 - 0.14), top + 0.2, cz + D.F[1] * (u.d / 2 - 0.14), mw, 0.32, md, false);
         const [kw, kd] = wd(Math.min(0.42, u.w * 0.4), 0.14); addBox3(u, dm, cx - D.F[0] * 0.08, top + 0.01, cz - D.F[1] * 0.08, kw, 0.02, kd, false);
         }
+        for (const e of assetLayout(u)) {   // each asset is a box standing on the table top
+          const am = new T.MeshStandardMaterial({ color: parseInt(assetCol(e.a).slice(1), 16), roughness: .55, metalness: .1, emissive: 0x000000 }); k.mats["a:" + e.a.id] = am;
+          addBox3({ id: "a:" + e.a.id }, am, e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
+          const al = label(e.a.name, 0.55); al.position.set(e.cx, e.y + e.h + 0.12, e.cz); root.add(al);
+        }
       } else if (u.kind === "rack") {
         const T3 = 0.03, lg = 0.04, lh = u.h / u.levels;
         for (let i = 0; i <= u.levels; i++) addBox3(u, m, cx, e0 + (i === u.levels ? u.h - T3 / 2 : i * lh + T3 / 2), cz, f.w, T3, f.d);
         for (const sr of [-1, 1]) for (const sf of [-1, 1]) { const px = cx + D.R[0] * sr * (u.w / 2 - lg / 2) + D.F[0] * sf * (u.d / 2 - lg / 2), pz = cz + D.R[1] * sr * (u.w / 2 - lg / 2) + D.F[1] * sf * (u.d / 2 - lg / 2); addBox3(u, m, px, e0 + u.h / 2, pz, lg, u.h, lg); }
-        for (const e of boxLayout(u)) addBox3(e.b, matOf(e.b), e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
+        for (const e of boxLayout(u)) {
+          addBox3(e.b, matOf(e.b), e.cx, e.y + e.h / 2, e.cz, e.wx, e.h, e.wz);
+          if (e.b.levels > 1) {   // lines on the lid show the sections
+            const c = Math.min(secCols(e.b), e.b.levels), rows = Math.ceil(e.b.levels / c), top = e.y + e.h + 0.004, segs = [], pt = (a, b2) => new T.Vector3(e.cx + D.R[0] * a + D.F[0] * b2, top, e.cz + D.R[1] * a + D.F[1] * b2);
+            for (let i = 1; i < c; i++) { const a = -e.b.w / 2 + e.b.w * i / c; segs.push(pt(a, -e.b.d / 2), pt(a, e.b.d / 2)); }
+            for (let j = 1; j < rows; j++) { const b2 = -e.b.d / 2 + e.b.d * j / rows; segs.push(pt(-e.b.w / 2, b2), pt(e.b.w / 2, b2)); }
+            root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(segs), new T.LineBasicMaterial({ color: light(colorOf(e.b)) ? 0x14232B : 0xFFFFFF })));
+          }
+        }
         if (S.t) { /* level lines are the shelves themselves */ }
       } else {
         addBox3(u, m, cx, e0 + u.h / 2, cz, f.w, u.h, f.d);
@@ -892,6 +970,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function pulse(ts) {
     const k = S.t, p = 0.5 + 0.5 * Math.sin(ts / 240);
     for (const [uid, m] of Object.entries(k.mats)) { const on = S.hl === uid; m.emissive.setHex(on ? 0x6B5400 : 0x000000); m.emissiveIntensity = on ? 0.5 + p : 0; }
+    const ae = S.hl && String(S.hl).startsWith("a:") ? assetEntry(String(S.hl).slice(2)) : null; if (ae && k.marker) { k.marker.visible = true; k.marker.position.set(ae.cx, ae.y + ae.h + 0.45 + 0.1 * p, ae.cz); return; }
     const u = S.hl && unit(S.hl); if (u && k.marker) { const a = anchor(u); k.marker.visible = true; k.marker.position.set(a.x, a.y1 + (u.parent_id ? 0.45 : 0.75) + 0.15 * p, a.z); } else if (k.marker) k.marker.visible = false;
   }
   function controls(cv) {
@@ -912,25 +991,33 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   }
   function pick(e, cv) {
     const k = S.t, T = k.T, b = cv.getBoundingClientRect(), v = new T.Vector2(((e.clientX - b.left) / b.width) * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1), rc = new T.Raycaster(); rc.setFromCamera(v, k.camera);
-    const h = rc.intersectObjects(k.pick, false)[0]; S.hl = h ? h.object.userData.unit : null; S.sel = S.hl ? { kind: "unit", id: S.hl } : null; S.focusItem = null; paintSide();
+    const h = rc.intersectObjects(k.pick, false)[0]; S.hl = h ? h.object.userData.unit : null;
+    const asset = S.hl && String(S.hl).startsWith("a:") ? (state.assets || []).find(x => "a:" + x.id === S.hl) : null;   // an asset on a table: show its table, with the asset highlighted
+    S.sel = asset ? (asset.unit_id ? { kind: "unit", id: asset.unit_id } : null) : S.hl ? { kind: "unit", id: S.hl } : null; S.focusItem = null; paintSide();
   }
-  function focusUnit(uid) { const k = S.t, u = unit(uid); if (!k || !u) return; const a = anchor(u), C = k.C; C.tx = a.x; C.tz = a.z; C.ty = (a.y0 + a.y1) / 2; C.dist = Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4); camUpdate(); }
+  function focusUnit(uid) {
+    const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null, C = k.C;
+    if (ae) { C.tx = ae.cx; C.tz = ae.cz; C.ty = ae.y + ae.h / 2; C.dist = Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3); camUpdate(); return; }
+    const u = unit(uid); if (!u) return; const a = anchor(u); C.tx = a.x; C.tz = a.z; C.ty = (a.y0 + a.y1) / 2; C.dist = Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4); camUpdate(); }
   function focusItem(kind, id) {
     const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
-    S.hl = x.it.unit_id; S.sel = { kind: "unit", id: S.hl }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();
+    S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();
   }
   function paintSide() {
     const el = $("#s3Side"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     const find = `<div class="field"><label for="sFind">What are you looking for?</label><input id="sFind" type="text" placeholder="e.g. cutter, M6, screw" value="${esc(S.find || "")}" autocomplete="off"></div><div id="sRes" style="margin-top:8px"></div>`;
     if (!u) { el.innerHTML = find + `<p class="hint" style="margin-top:12px">Or click a shelf, cabinet or box in the 3D view to see what is inside, and to add things to it.</p>`; bindFind(); showRes(); return; }
     const rm = roomOf(u), p = parentOf(u), hi = x => S.focusItem === x.kind + ":" + x.it.id ? "font-weight:700" : "";
-    const itemRows = its => its.map(x => `<div style="font-size:14px;${hi(x)}"><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${x.kind === "tool" && x.it.status === "out" ? " (out)" : ""}</div>`).join("");
+    const itemRows = its => its.map(x => `<div style="font-size:14px;${hi(x)}"><i class="lg" style="background:${x.kind === "tool" ? "#F2C200" : x.kind === "asset" ? "#6B4FA0" : "#2FB3B3"}"></i><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(itemName(x))}</button>${x.kind === "tool" && x.it.status === "out" ? " (out)" : ""}</div>`).join("");
     const addBtn = (label, attr) => state.user ? `<button class="btn sec" ${attr} style="padding:2px 10px;font-size:14px">＋ ${label}</button>` : "";
+    const secList = b => Array.from({ length: b.levels }, (_, i) => i + 1).map(n => `<div style="margin-left:14px;font-size:13px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>Section ${n}</strong>${addBtn("Add", `data-herebox="${b.id}" data-sec="${n}"`)}</div>${itemRows(itemsAt(b.id, n)) || `<div class="hint" style="margin:0">empty</div>`}</div>`).join("");
+    const boxBody = b => (b.levels > 1 ? secList(b) : itemRows(itemsAt(b.id)) || `<div class="hint" style="margin:0 0 0 14px">empty</div>`);
+    const boxBlock = (b, depth) => `<div style="margin:6px 0 0 ${depth * 14}px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">${depth ? "↑ " : "▢ "}${esc(b.name)}</button>${b.levels > 1 ? "" : addBtn("Add", `data-herebox="${b.id}"`)}</div>${boxBody(b)}${kids(b).map(c => boxBlock(c, depth + 1)).join("")}</div>`;
     let body;
-    if (p) body = (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px">${addBtn("Add to this box", `data-here="1"`)}<button class="btn sec" id="sRack">Show the rack</button></div>`;
-    else body = Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => {
+    if (p) body = (u.levels > 1 ? `<div style="margin:6px 0">${secMapHtml(u, true)}</div>` + secList(u) : (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px">${addBtn("Add to this box", `data-here="1"`)}</div>`) + kids(u).map(c => boxBlock(c, 1)).join("") + `<div class="row" style="margin-top:10px"><button class="btn sec" id="sRack">Show the rack</button></div>`;
+    else body = Array.from({ length: isTable(u) ? 2 : u.levels }, (_, i) => (isTable(u) ? 2 : u.levels) - i).map(lv => {
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
-      return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>Level ${lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => `<div style="margin-top:4px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">▢ ${esc(b.name)}</button>${addBtn("Add", `data-herebox="${b.id}"`)}</div>${itemRows(itemsAt(b.id)) || `<div class="hint" style="margin:0 0 0 14px">empty</div>`}</div>`).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
+      return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
     el.innerHTML = find + `<h2 style="margin-top:16px">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
       <div class="row" style="margin-top:10px"><button class="btn sec" id="sEdit">Edit in space plan</button></div>`;
@@ -938,12 +1025,12 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if ($("#sRack")) $("#sRack").onclick = () => { S.hl = p.id; S.sel = { kind: "unit", id: p.id }; focusUnit(p.id); paintSide(); };
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.hl = b.dataset.box; S.sel = { kind: "unit", id: S.hl }; focusUnit(S.hl); paintSide(); });
     el.querySelectorAll("[data-here]").forEach(b => b.onclick = () => requireAuth(() => addHere(u.id, Number(b.dataset.here))));
-    el.querySelectorAll("[data-herebox]").forEach(b => b.onclick = () => requireAuth(() => addHere(b.dataset.herebox, 1)));
+    el.querySelectorAll("[data-herebox]").forEach(b => b.onclick = () => requireAuth(() => addHere(b.dataset.herebox, Number(b.dataset.sec || 1))));
   }
   function bindFind() { const i = $("#sFind"); if (!i) return; i.oninput = () => { S.find = i.value; showRes(); }; }
   function showRes() {
     const el = $("#sRes"); if (!el) return; const q = (S.find || "").trim().toLowerCase(); if (!q) { el.innerHTML = ""; return; }
-    const hits = allItems().filter(x => (itemName(x) + " " + (x.it.slot || "") + " " + (x.it.location || "") + " " + (x.it.category || "")).toLowerCase().includes(q)).slice(0, 8);
+    const hits = allItems().filter(x => (itemName(x) + " " + (x.it.slot || "") + " " + (x.it.location || "") + " " + (x.it.category || "") + " " + (x.it.tag || "") + " " + (x.it.model || "")).toLowerCase().includes(q)).slice(0, 8);
     el.innerHTML = hits.length ? hits.map(x => `<div class="row" style="justify-content:space-between;gap:6px;font-size:14px;border-bottom:1px solid var(--line);padding:4px 0"><span>${esc(itemName(x))}<br><span class="hint">${esc(whereOf(x.it) || "not placed yet")}</span></span><button class="btn sec" style="padding:2px 10px" data-go="${x.kind}:${x.it.id}">Show</button></div>`).join("") : `<p class="hint">Nothing matches.</p>`;
     el.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const i = b.dataset.go.indexOf(":"); focusItem(b.dataset.go.slice(0, i), b.dataset.go.slice(i + 1)); });
   }
@@ -957,11 +1044,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const paint = () => {
       const q = $("#iQ").value.trim().toLowerCase(), un = $("#iUn").checked, list = allItems().filter(x => (!q || itemName(x).toLowerCase().includes(q)) && (!un || !unit(x.it.unit_id)));
       const ops = uid => S.units.map(uu => `<option value="${uu.id}" ${uu.id === uid ? "selected" : ""}>${esc(unitPath(uu))}</option>`).join("");
-      $("#iList").innerHTML = S.units.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Now</th><th>Shelf or cabinet</th><th>Level</th><th></th></tr></thead><tbody>${list.map(x => `<tr data-k="${x.kind}" data-id="${x.it.id}"><td><strong>${esc(itemName(x))}</strong></td><td>${x.kind === "tool" ? "Tool" : "Consumable"}</td><td>${esc(whereOf(x.it) || "Not placed")}</td>
+      $("#iList").innerHTML = S.units.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Now</th><th>Shelf or cabinet</th><th>Level or section</th><th></th></tr></thead><tbody>${list.map(x => `<tr data-k="${x.kind}" data-id="${x.it.id}"><td><strong>${esc(itemName(x))}</strong></td><td>${kindName(x.kind)}</td><td>${esc(whereOf(x.it) || "Not placed")}</td>
         <td><select class="sel iU"><option value="">Not placed</option>${ops(x.it.unit_id)}</select></td><td><select class="sel iL" style="min-width:70px"></select></td><td><button class="btn sec iGo">Place</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Draw some shelves or cabinets under Setup, Space plan, first.</p></div>`;
       $("#iList").querySelectorAll("tbody tr").forEach(tr => {
         const x = allItems().find(a => a.kind === tr.dataset.k && String(a.it.id) === tr.dataset.id), us = tr.querySelector(".iU"), ls = tr.querySelector(".iL");
-        const fill = () => { const uu = unit(us.value); ls.innerHTML = uu ? Array.from({ length: uu.levels }, (_, i) => `<option ${Number(x.it.level) === i + 1 && x.it.unit_id === uu.id ? "selected" : ""}>${i + 1}</option>`).join("") : `<option>-</option>`; ls.disabled = !uu; }; fill(); us.onchange = fill;
+        const fill = () => { const uu = unit(us.value); ls.innerHTML = uu && isTable(uu) ? `<option value="1" ${Number(x.it.level) !== 2 || x.it.unit_id !== uu.id ? "selected" : ""}>on the top</option><option value="2" ${Number(x.it.level) === 2 && x.it.unit_id === uu.id ? "selected" : ""}>under it</option>` : uu ? Array.from({ length: uu.levels }, (_, i) => `<option ${Number(x.it.level) === i + 1 && x.it.unit_id === uu.id ? "selected" : ""}>${i + 1}</option>`).join("") : `<option>-</option>`; ls.disabled = !uu; }; fill(); us.onchange = fill;
         tr.querySelector(".iGo").onclick = () => requireAuth(async () => { try { await guard(rpcAuth("toolscale_space_place", { p_kind: x.kind, p_id: x.it.id, p_unit: us.value || null, p_level: us.value ? Number(ls.value) : null })); await refreshAll(); paint(); toast("Saved"); } catch (e) {} });
       });
       labelTables();
@@ -969,5 +1056,5 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#iQ").oninput = paint; $("#iUn").onchange = paint; paint();
   }
 
-  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); }, _t: { S, fp, inPoly, area, roomOf } };
+  window.SpaceUI = { plan, view3d, items, stop, onData() { if (S.t) paintSide(); else if (S.view && $("#sProps") && !S.drag && !document.activeElement?.closest?.("#sProps")) { paintProps(); draw(); } }, _t: { S, fp, inPoly, area, roomOf, assetLayout, boxLayout } };
 })();

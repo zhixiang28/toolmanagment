@@ -129,6 +129,7 @@ section.block>h2{font-size:30px;margin-bottom:var(--s3)}
 .btn.danger{background:var(--alert);border-color:var(--alert)}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 label{display:block;font-size:14px;font-weight:600;margin-bottom:var(--s1)}
+textarea{width:100%;padding:var(--s2) var(--s3);border:2px solid #9EAAB0;background:#fff;resize:vertical}
 input[type=text],input[type=search],input[type=number],input[type=email],input[type=password]{width:100%;padding:var(--s2) var(--s3);border:2px solid #9EAAB0;background:#fff;min-height:42px}
 .hint{font-size:14px;color:var(--ink-2);margin:var(--s1) 0 0}
 .row{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-end}
@@ -250,7 +251,7 @@ const round05 = x => Math.round(x * 2) / 2;
 const state = {
   tab: "board", user: null, tools: [], events: [], device: null, wevents: [],
   filter: "all", seenEventId: null, dismissedUpTo: Number(localStorage.getItem("ts_dismissed") || 0),
-  teach: null, editingId: null, err: null,
+  teach: null, editingId: null, err: null, assets: [],
   mode: "tools", citems: [], cevents: [], countItem: null, cont: {}, reorder: [], draftMsg: null,
 };
 /* Pages are grouped by the job you are doing, not by the hardware behind them */
@@ -260,7 +261,7 @@ const SECTIONS = [
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"]]],
   ["stock", "Stock", [["stock", "On hand"], ["count", "Count by weight"], ["detect", "Count by camera"], ["identify", "Identify one"], ["history", "History"]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"]]],
+  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"]]],
 ];
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
@@ -477,7 +478,7 @@ function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -495,7 +496,7 @@ async function refreshDevice() {
 }
 async function refreshAll() {
   try {
-    const [tools, events, citems, cevents, reorder, srooms, sunits] = await Promise.all([
+    const [tools, events, citems, cevents, reorder, srooms, sunits, assets] = await Promise.all([
       guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
       guard(sb.from("consumables").select("*").eq("active", true).order("name")),
@@ -503,11 +504,12 @@ async function refreshAll() {
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
       guard(sb.from("space_rooms").select("id,name,points").eq("active", true)),
       guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level").eq("active", true)),
+      guard(sb.from("assets").select("*").eq("active", true).order("name")),
     ]);
     await refreshDevice();
-    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits) + JSON.stringify(assets), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; updateBadge(); if (changed && window.SpaceUI && state.tab === "s3d") SpaceUI.onData();
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; state.assets = assets; updateBadge(); if (changed && window.SpaceUI && ["s3d", "splan"].includes(state.tab)) SpaceUI.onData();
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -542,18 +544,22 @@ function updateLive() {
 }
 
 /* ---------- home: what needs doing, search everything, quick actions ---------- */
-const kindName = k => k === "tool" ? "Tool" : "Consumable";
-const allEntries = () => [...state.tools.map(it => ({ kind: "tool", it })), ...state.citems.map(it => ({ kind: "consumable", it }))];
+const kindName = k => k === "tool" ? "Tool" : k === "asset" ? "Asset" : "Consumable";
+const itemsOf = k => k === "tool" ? state.tools : k === "asset" ? state.assets || [] : state.citems;
+const ASSET_STATUS = { in_use: "In use", spare: "Spare", repair: "In repair", retired: "Retired" };
+const assetColor = a => a.color || "#7A8DA8";
+const allEntries = () => [...state.tools.map(it => ({ kind: "tool", it })), ...state.citems.map(it => ({ kind: "consumable", it })), ...(state.assets || []).map(it => ({ kind: "asset", it }))];
 const fullName = it => it.name + (it.spec ? " " + it.spec : "");
 const whereText = it => locText(it) || it.slot || it.location || "";
 const onOrder = (kind, id) => state.reorder.find(r => r.kind === kind && r.item_id === id);
 function statusText(kind, it) {
+  if (kind === "asset") return `<span class="chip ${it.status === "repair" ? "warn" : it.status === "retired" ? "" : "in"}">${esc(ASSET_STATUS[it.status] || it.status)}</span>`;
   if (kind === "tool") return it.status === "out" ? `<span class="chip out">Out ${esc(ago(it.taken_at))}</span>` : `<span class="chip in">In</span>`;
   return `<span class="chip ${lowItem(it) ? "low" : ""}">${it.count_on_hand} on hand${lowItem(it) ? " · low" : ""}</span>`;
 }
 function searchItems(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
-  return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.category, it.slot, it.location, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
+  return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.category, it.slot, it.location, it.tag, it.model, it.serial, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
     .sort((a, b) => (a.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) - (b.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) || a.it.name.localeCompare(b.it.name));
 }
 function resultRows(list) {
@@ -574,6 +580,8 @@ function attention() {
   if (sug.length) c.push(["warn", sug.length, `consumable${sug.length > 1 ? "s" : ""} at or below minimum and not on the order list yet.`, "Add to order", "go:reorder"]);
   else if (low.length) c.push(["hi", low.length, `consumable${low.length > 1 ? "s" : ""} low on stock, already on the order list.`, "See stock", "go:stock"]);
   if (open.length) c.push(["", open.length, `item${open.length > 1 ? "s" : ""} on this month's order list.`, "Open list", "go:reorder"]);
+  const rep = (state.assets || []).filter(a => a.status === "repair"); if (rep.length) c.push(["hi", rep.length, `asset${rep.length > 1 ? "s" : ""} in repair: ${rep.map(a => esc(a.name)).join(", ")}.`, "See assets", "go:assets"]);
+  const sim = hasSpace ? similarGroups() : []; if (sim.length) c.push(["hi", sim.length, `group${sim.length > 1 ? "s" : ""} of similar items stored in different places. Together they are quicker to find.`, "See suggestions", "sim-all"]);
   if (hasSpace && unplaced) c.push(["", unplaced, `item${unplaced > 1 ? "s have" : " has"} no place on a shelf yet, so Find cannot show ${unplaced > 1 ? "them" : "it"}.`, "Place items", "go:sitems"]);
   const stale = state.citems.filter(i => !i.counted_at || Date.now() - new Date(i.counted_at) > 30 * 86400e3);
   if (stale.length) c.push(["", stale.length, `consumable${stale.length > 1 ? "s" : ""} not counted in the last 30 days.`, "Count", "go:count"]);
@@ -595,21 +603,70 @@ function recentFeed(n) {
   const b = state.cevents.map(e => ({ ts: e.ts, what: `${e.item_name || "Item"}: ${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})`, note: [e.note, e.person].filter(Boolean).join(" · ") }));
   return [...a, ...b].sort((x, y) => new Date(y.ts) - new Date(x.ts)).slice(0, n);
 }
+/* ---------- similar things stored in different places: suggest keeping them together ---------- */
+const SIM_OFF = () => { try { return JSON.parse(localStorage.getItem("ts_sim_off") || "[]"); } catch (e) { return []; } };
+const placeKey = it => { let u = it.unit_id && unitById(it.unit_id), n = 0; if (!u) return null; while (u.parent_id && unitById(u.parent_id) && n++ < 10) u = unitById(u.parent_id); return u.id; };   // boxes count as the rack they sit on
+function simNoun(kind, it) {   // the last word of the name is what it is: "Pan head screw M4" is a screw, "Long cutter" a cutter
+  const words = String(it.name || "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(w => w.length > 1 && w !== "mm");
+  let n = words[words.length - 1] || (kind === "consumable" ? String(it.category || "").toLowerCase() : ""); if (!n) return null;
+  if (/ies$/.test(n)) n = n.slice(0, -3) + "y"; else if (/(ch|sh|x|ss)es$/.test(n)) n = n.slice(0, -2); else if (/s$/.test(n) && !/ss$/.test(n)) n = n.slice(0, -1);
+  return n;
+}
+const simLabel = g => { const n = g.noun.charAt(0).toUpperCase() + g.noun.slice(1); return /(s|x|ch|sh)$/.test(n) ? n + "es" : /y$/.test(n) ? n.slice(0, -1) + "ies" : n + "s"; };
+function similarGroups() {
+  const by = {}; allEntries().forEach(e => { const n = simNoun(e.kind, e.it); if (!n) return; const k = e.kind + ":" + n; (by[k] = by[k] || { key: k, noun: n, kind: e.kind, items: [] }).items.push(e); });
+  const off = SIM_OFF(), out = [];
+  for (const g of Object.values(by)) {
+    if (g.items.length < 2) continue; const placed = g.items.filter(x => placeKey(x.it)), keys = [...new Set(placed.map(x => placeKey(x.it)))]; if (keys.length < 2) continue;
+    const sig = g.key + "|" + g.items.map(x => x.it.id + "@" + (x.it.unit_id || "-")).sort().join(","); if (off.includes(sig)) continue;
+    const cnt = {}; placed.forEach(x => { const k = placeKey(x.it); cnt[k] = (cnt[k] || 0) + 1; });
+    const best = keys.sort((a, b) => cnt[b] - cnt[a] || String(a).localeCompare(String(b)))[0];   // the place that already holds the most
+    const here = placed.filter(x => placeKey(x.it) === best), uc = {}; here.forEach(x => { uc[x.it.unit_id] = (uc[x.it.unit_id] || 0) + 1; });
+    const unitId = Object.keys(uc).sort((a, b) => uc[b] - uc[a])[0], lc = {}; here.filter(x => x.it.unit_id === unitId).forEach(x => { lc[x.it.level] = (lc[x.it.level] || 0) + 1; });
+    out.push({ ...g, sig, target: { unit_id: unitId, level: Number(Object.keys(lc).sort((a, b) => lc[b] - lc[a])[0]) || 1 }, there: here.length, places: keys.length, moves: g.items.filter(x => placeKey(x.it) !== best) });
+  }
+  return out.sort((a, b) => b.moves.length - a.moves.length || a.noun.localeCompare(b.noun));
+}
+function simCard(g) {
+  const tu = unitById(g.target.unit_id), tgt = unitLabel(tu) + (tu.parent_id ? "" : " · level " + g.target.level);
+  return `<div class="acard hi"><h3 style="font-size:24px">${esc(simLabel(g))} <span class="hint" style="font-size:14px;font-family:var(--body)">${g.items.length} items in ${g.places} places</span></h3>
+    <ul style="list-style:none;margin:0;padding:0;font-size:14px">${g.items.map(({ kind, it }) => { const stay = !g.moves.some(m => m.kind === kind && m.it.id === it.id); return `<li style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;${stay ? "color:var(--steel);font-weight:600" : ""}"><button class="linkname" data-act="sheet" data-kind="${kind}" data-id="${it.id}">${esc(fullName(it))}</button><span class="hint" style="margin:0;text-align:right">${esc(whereText(it) || "not placed yet")}</span></li>`; }).join("")}</ul>
+    <p>Suggested home: <strong>${esc(tgt)}</strong>, which already holds ${g.there} of them.</p>
+    <div class="row"><button class="btn" data-act="sim-move" data-g="${esc(g.key)}">Move ${g.moves.length} there</button><button class="btn sec" data-act="sim-pick" data-g="${esc(g.key)}">Pick another place</button><button class="linkbtn" style="color:var(--steel)" data-act="sim-skip" data-g="${esc(g.key)}">Not now</button></div></div>`;
+}
+function simSection() {
+  if (!(state.spaceUnits || []).length) return ""; const gs = similarGroups(); if (!gs.length) return ""; const show = state.simAll ? gs : gs.slice(0, 2);
+  return `<section class="block" id="simSec"><h2>Keep similar things together</h2><p class="hint" style="margin:0 0 10px">These are the same kind of thing but stored in different places. Putting them side by side makes them quicker to find and to count.</p>
+    <div class="cards4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))">${show.map(simCard).join("")}</div>${gs.length > show.length ? `<button class="btn sec" style="margin-top:10px" data-act="sim-all">Show all ${gs.length}</button>` : ""}</section>`;
+}
+async function simMove(key, tgt) {   // without a target: the suggested home. With one: everything not already exactly there.
+  const g = similarGroups().find(x => x.key === key); if (!g) return; const t = tgt || g.target, list = tgt ? g.items.filter(x => !(x.it.unit_id === t.unit_id && Number(x.it.level) === Number(t.level))) : g.moves; let n = 0;
+  try { for (const m of list) { await guard(rpcAuth("toolscale_space_place", { p_kind: m.kind, p_id: m.it.id, p_unit: t.unit_id, p_level: t.level })); n++; } await refreshAll(); toast("Moved " + n + " item" + (n === 1 ? "" : "s") + " to " + unitLabel(unitById(t.unit_id)) + (unitById(t.unit_id).parent_id ? "" : " · level " + t.level)); if (state.tab === "home") renderHome(); } catch (e) {}
+}
+function simPick(key) {
+  const g = similarGroups().find(x => x.key === key); if (!g) return; const d = $("#dlg");
+  d.innerHTML = `<form method="dialog" id="simForm"><div class="dlg-h"><h2>Keep ${esc(simLabel(g).toLowerCase())} together</h2></div><div class="dlg-b"><p style="margin:0">Choose where all ${g.items.length} should live.</p>${placeHtml({ unit_id: g.target.unit_id, level: g.target.level }, "sm")}</div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="sm_cancel">Cancel</button><button type="submit" class="btn">Move them here</button></div></form>`;
+  d.showModal(); bindPlace("sm"); $("#sm_cancel").onclick = () => d.close();
+  $("#simForm").onsubmit = async e => { e.preventDefault(); const u = $("#sm_unit").value; if (!u) return toast("Choose a shelf or cabinet."); d.close(); await simMove(key, { unit_id: u, level: Number($("#sm_lvl").value) || 1 }); };
+}
 function renderHome() {
   const att = attention(), steps = setupSteps(), todo = steps.filter(s => !s[0]).length;
   const inN = state.tools.filter(t => t.status === "in").length, low = state.citems.filter(lowItem).length, feed = recentFeed(6);
   $("#main").innerHTML = `<div class="summary"><div><h1>${att.some(a => a[0] === "warn") ? "Needs a look" : "All in order"}</h1>
-    <p>${state.tools.length ? `${inN} of ${state.tools.length} tools in` : "No tools yet"} · ${state.citems.length ? `${state.citems.length} consumables, ${low ? low + " low" : "none low"}` : "no consumables yet"} · ${openReorder().length} on the order list</p></div></div>
+    <p>${state.tools.length ? `${inN} of ${state.tools.length} tools in` : "No tools yet"} · ${state.citems.length ? `${state.citems.length} consumables, ${low ? low + " low" : "none low"}` : "no consumables yet"}${(state.assets || []).length ? ` · ${state.assets.length} asset${state.assets.length === 1 ? "" : "s"}` : ""} · ${openReorder().length} on the order list</p></div></div>
   <div class="srch">${icon("find")}<input id="q" type="search" placeholder="Find a tool or part: name, size or shelf" value="${esc(state.q || "")}" autocomplete="off" aria-label="Search tools and consumables"><div id="qRes"></div></div>
   ${att.length ? `<div class="cards4">${att.map(([cls, n, txt, btn, act]) => `<div class="acard ${cls}"><div class="n num">${n}</div><p>${txt}</p><button class="btn sec" data-act="${act}">${btn}</button></div>`).join("")}</div>`
     : `<div class="cards4"><div class="acard ok"><div class="n">✓</div><p>Nothing needs doing. Tools are tracked, stock is above minimum and the order list is empty.</p></div></div>`}
+  ${simSection()}
   <section class="block"><h2>Quick actions</h2><div class="qa">
     <button data-act="go:s3d">${icon("cube")}Show me where</button>
     <button data-act="go:count">${icon("count")}Count by weight</button>
     <button data-act="go:detect">${icon("camera")}Count by camera</button>
     <button data-act="go:board">${icon("tools")}Tool board</button>
     <button data-act="add">${icon("plus")}Add a tool</button>
-    <button data-act="citem-add">${icon("plus")}Add a consumable</button></div></section>
+    <button data-act="citem-add">${icon("plus")}Add a consumable</button>
+    <button data-act="asset-add">${icon("plus")}Add an asset</button></div></section>
   ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
   <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
   const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? resultRows(searchItems(q.value)) : ""; };
@@ -621,23 +678,31 @@ function itemSheet(kind, id) { state.sheet = { kind, id }; paintSheet(); const d
 function placeHtml(it, k) {
   const units = state.spaceUnits || []; if (!units.length) return `<p class="hint">Draw your shelves under Setup, Space plan, to give it a place you can find in 3D.</p>`;
   const u = units.find(x => x.id === it?.unit_id);
-  return `<div class="row"><div class="field"><label for="${k}_unit">Shelf or cabinet</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
-    <div class="field" style="max-width:120px"><label for="${k}_lvl">Level</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
+  return `<div class="row"><div class="field"><label for="${k}_unit">Shelf, cabinet or table</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
+    <div class="field" style="max-width:120px"><label for="${k}_lvl" id="${k}_lvlL">${slotWord(u)}</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
 }
-const unitLabel = u => { const r = roomOfUnit(u), p = u.parent_id && unitById(u.parent_id); return (r ? r.name + " · " : "") + (p ? p.name + " · level " + u.parent_level + " · " : "") + u.name; };
-const levelOpts = (u, lv) => u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
-function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { $("#" + k + "_lvl").innerHTML = levelOpts((state.spaceUnits || []).find(x => x.id === us.value), 1); }; }
+const unitLabel = u => {
+  const r = roomOfUnit(u), chain = []; let x = u, n = 0; while (x && x.parent_id && unitById(x.parent_id) && n++ < 10) { chain.unshift(x); x = unitById(x.parent_id); }
+  if (!chain.length) return (r ? r.name + " · " : "") + u.name;
+  return (r ? r.name + " · " : "") + x.name + (x.kind === "rack" ? " · level " + chain[0].parent_level : "") + " · " + chain.map(c => c.name).join(" › ");
+};
+const isBox = u => u && u.kind === "box";
+const isTableUnit = u => u && (u.kind === "desk" || u.kind === "bench");
+const slotWord = u => isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
+const levelOpts = (u, lv) => u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
+function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { const u = (state.spaceUnits || []).find(x => x.id === us.value); $("#" + k + "_lvl").innerHTML = levelOpts(u, 1); const l = $("#" + k + "_lvlL"); if (l) l.textContent = slotWord(u); }; }
 async function savePlace(kind, id, k, it) {
   const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
   if ((it?.unit_id || null) === unit && (unit == null || Number(it.level) === lvl)) return;
   await guard(rpcAuth("toolscale_space_place", { p_kind: kind, p_id: id, p_unit: unit, p_level: lvl }));
 }
 function paintSheet() {
-  const sh = state.sheet; if (!sh) return; const tool = sh.kind === "tool", it = (tool ? state.tools : state.citems).find(x => x.id === sh.id), d = $("#dlg");
+  const sh = state.sheet; if (!sh) return; const tool = sh.kind === "tool", asset = sh.kind === "asset", it = itemsOf(sh.kind).find(x => x.id === sh.id), d = $("#dlg");
   if (!it) { d.close(); return; }
   const ord = onOrder(sh.kind, it.id), where = whereText(it);
-  const hist = tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
-  const facts = tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
+  const hist = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
+  const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
+    : tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
     : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
     <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
@@ -645,9 +710,12 @@ function paintSheet() {
     <div><h3 style="font-size:22px;margin-bottom:6px">Where it lives</h3><p style="margin:0 0 8px">${where ? esc(where) : `<span class="hint">No place set yet.</span>`}</p>
       ${it.unit_id ? `<button type="button" class="btn" data-act="locate" data-kind="${sh.kind}" data-id="${it.id}">Show in 3D</button>` : ""}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Change where it lives</summary><div style="margin-top:8px">${placeHtml(it, "sp")}${(state.spaceUnits || []).length ? `<button type="button" class="btn sec" id="spSave" style="margin-top:8px">Save place</button>` : ""}</div></details></div>
-    <div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div></div>
+    ${asset ? (it.notes ? `<div><h3 style="font-size:22px;margin-bottom:6px">Notes</h3><p style="margin:0;white-space:pre-wrap">${esc(it.notes)}</p></div>` : "") : ""}
+    ${asset ? "" : `<div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div>`}</div>
     <div class="dlg-f">
-      ${tool ? `<button type="button" class="btn sec" data-act="flip" data-id="${it.id}" data-to="${it.status === "out" ? "in" : "out"}">Mark ${it.status === "out" ? "in" : "out"}</button>
+      ${asset ? `<button type="button" class="btn sec" data-act="asset-flip" data-id="${it.id}">${it.status === "repair" ? "Back in use" : "Report: in repair"}</button>
+        <button type="button" class="btn sec" data-act="asset-edit" data-id="${it.id}">Edit</button>`
+      : tool ? `<button type="button" class="btn sec" data-act="flip" data-id="${it.id}" data-to="${it.status === "out" ? "in" : "out"}">Mark ${it.status === "out" ? "in" : "out"}</button>
         <button type="button" class="btn sec" data-act="report" data-kind="tool" data-id="${it.id}">Report a problem</button>
         <button type="button" class="btn sec" data-act="edit" data-id="${it.id}">Edit</button>`
       : `<button type="button" class="btn sec" data-act="count-item" data-id="${it.id}">Count it</button>
@@ -657,20 +725,60 @@ function paintSheet() {
   bindPlace("sp");
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
+/* ---------- assets: equipment you keep track of, drawn as a box on a table, shelf or the floor ---------- */
+const saveAsset = a => guard(rpcAuth("toolscale_asset_save", { p_id: a.id || null, p_name: a.name, p_category: a.category || "", p_tag: a.tag || "", p_model: a.model || "", p_serial: a.serial || "", p_status: a.status || "in_use", p_notes: a.notes || "", p_w: Math.round(a.w * 1000) / 1000, p_d: Math.round(a.d * 1000) / 1000, p_h: Math.round(a.h * 1000) / 1000, p_color: a.color || "", p_ox: a.ox == null ? null : Math.round(a.ox * 1000) / 1000 }));
+const ASSET_SIZES = [["PC tower", 20, 45, 45], ["Monitor", 55, 20, 35], ["Laptop", 35, 25, 4], ["Oscilloscope", 35, 30, 15], ["Soldering station", 15, 20, 20], ["Power supply", 25, 25, 10], ["3D printer", 40, 40, 40], ["Small box", 20, 20, 15], ["Medium box", 40, 30, 25]];
+function renderAssets() {
+  const q = (state.assetQ || "").toLowerCase(), list = (state.assets || []).filter(a => !q || [a.name, a.category, a.tag, a.model, a.serial, whereText(a)].join(" ").toLowerCase().includes(q));
+  $("#main").innerHTML = `<div class="summary"><div><h1>Assets</h1><p>Equipment you want to keep track of: a PC, an oscilloscope, a soldering station. Give each a size and it shows as a box on its workbench or table, on a shelf, or in a room.</p></div><button class="btn" data-act="asset-add">Add asset</button></div>
+  ${(state.assets || []).length ? `<div class="field" style="max-width:320px;margin-bottom:12px"><input id="asQ" type="search" placeholder="Filter by name, tag or place" value="${esc(state.assetQ || "")}" aria-label="Filter"></div>
+  <div class="tablewrap"><table class="cards"><thead><tr><th>Asset</th><th>Type</th><th>Tag</th><th>Status</th><th>Where</th><th>Size</th><th></th></tr></thead><tbody>
+  ${list.map(a => `<tr><td><button class="linkname" data-act="sheet" data-kind="asset" data-id="${a.id}"><strong>${esc(a.name)}</strong></button>${a.model ? `<div class="hint">${esc(a.model)}</div>` : ""}</td><td>${esc(a.category || "-")}</td><td>${esc(a.tag || "-")}</td><td>${statusText("asset", a)}</td><td>${esc(whereText(a) || "-")}</td><td class="num">${Math.round(a.w * 100)} × ${Math.round(a.d * 100)} × ${Math.round(a.h * 100)} cm</td>
+    <td><button class="btn sec" data-act="asset-edit" data-id="${a.id}">Edit</button>${a.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="asset" data-id="${a.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length ? "" : `<div class="empty" style="margin-top:12px"><p>Nothing matches.</p></div>`}`
+    : `<div class="empty"><h2>No assets yet</h2><p>Add your first piece of equipment, then put it on a table in your space plan.</p><button class="btn" data-act="asset-add">Add the first asset</button></div>`}`;
+  const aq = $("#asQ"); if (aq) aq.oninput = () => { state.assetQ = aq.value; const pos = aq.selectionStart; renderAssets(); labelTables(); const n = $("#asQ"); n.focus(); n.setSelectionRange(pos, pos); };
+}
+function assetDialog(asset) {
+  const d = $("#dlg"), a = asset || { w: 0.3, d: 0.3, h: 0.2, status: "in_use" }, cmv = v => Math.round(Number(v) * 100);
+  d.innerHTML = `<form method="dialog" id="assetForm"><div class="dlg-h"><h2>${asset ? "Edit asset" : "Add asset"}</h2></div><div class="dlg-b">
+    <div><label for="a_name">Name</label><input id="a_name" type="text" required maxlength="60" placeholder="e.g. Oscilloscope" value="${esc(a.name || "")}"></div>
+    <div class="row"><div class="field"><label for="a_cat">Type</label><input id="a_cat" type="text" maxlength="40" list="a_cats" placeholder="e.g. Instrument" value="${esc(a.category || "")}"><datalist id="a_cats"><option>Computer</option><option>Instrument</option><option>Machine</option><option>Equipment</option><option>Furniture</option><option>Other</option></datalist></div>
+      <div class="field"><label for="a_status">Status</label><select id="a_status" class="sel">${Object.entries(ASSET_STATUS).map(([k, v]) => `<option value="${k}" ${k === (a.status || "in_use") ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
+    <div class="row"><div class="field"><label for="a_tag">Asset tag</label><input id="a_tag" type="text" maxlength="40" value="${esc(a.tag || "")}"></div><div class="field"><label for="a_model">Model</label><input id="a_model" type="text" maxlength="60" value="${esc(a.model || "")}"></div><div class="field"><label for="a_serial">Serial number</label><input id="a_serial" type="text" maxlength="60" value="${esc(a.serial || "")}"></div></div>
+    <div><label for="a_notes">Notes</label><textarea id="a_notes" rows="2" maxlength="500" placeholder="Calibration due, who uses it, where the manual is...">${esc(a.notes || "")}</textarea></div>
+    <div><label>Size of the box it makes in your space (cm)</label><div class="row"><div class="field"><input id="a_w" type="number" min="2" max="300" step="1" value="${cmv(a.w)}" aria-label="Width"></div><div class="field"><input id="a_d" type="number" min="2" max="300" step="1" value="${cmv(a.d)}" aria-label="Depth"></div><div class="field"><input id="a_h" type="number" min="2" max="300" step="1" value="${cmv(a.h)}" aria-label="Height"></div></div>
+      <div class="row" style="margin-top:6px"><div class="field"><select id="a_pre" class="sel" aria-label="Common sizes"><option value="">Common sizes...</option>${ASSET_SIZES.map(([n, w, dd, h]) => `<option value="${w},${dd},${h}">${n} (${w} × ${dd} × ${h})</option>`).join("")}</select></div><div class="field" style="max-width:150px"><label for="a_col" style="margin:0 0 2px">Colour</label><input id="a_col" type="color" value="${assetColor(a)}" style="width:100%;height:42px;padding:0;border:2px solid #9EAAB0"></div></div>
+      <p class="hint">Width, depth and height. On a table the boxes line up from the left.</p></div>
+    ${placeHtml(asset || state.placeDefault || null, "ap")}
+    <div><label for="a_ox">From the left edge of the table (cm)</label><input id="a_ox" type="number" min="0" max="3000" step="1" placeholder="auto" value="${a.ox == null ? "" : cmv(a.ox)}"><p class="hint">Only for assets on a table. Leave empty to line them up by themselves.</p></div>
+  </div><div class="dlg-f">${asset ? `<button type="button" class="btn danger" id="a_del" style="margin-right:auto">Remove</button>` : ""}<button type="button" class="btn sec" id="a_cancel">Cancel</button><button type="submit" class="btn">Save asset</button></div></form>`;
+  if (!d.open) d.showModal(); bindPlace("ap");
+  const done = () => { state.placeDefault = null; d.close(); if (!["s3d", "splan"].includes(state.tab)) renderTab(); };   // the Find and plan pages repaint themselves
+  $("#a_cancel").onclick = () => { state.placeDefault = null; d.close(); }; d.oncancel = () => { state.placeDefault = null; };
+  $("#a_pre").onchange = e => { if (!e.target.value) return; const [w, dd, h] = e.target.value.split(",").map(Number); $("#a_w").value = w; $("#a_d").value = dd; $("#a_h").value = h; e.target.value = ""; };
+  $("#a_del")?.addEventListener("click", async () => { if (!confirm(`Remove ${asset.name}? It is taken off its shelf or table.`)) return; try { await guard(rpcAuth("toolscale_asset_hide", { p_id: asset.id })); await refreshAll(); done(); } catch (e) {} });
+  $("#assetForm").onsubmit = async e => {
+    e.preventDefault(); const dim = id => Math.max(2, Math.min(300, Number($("#" + id).value) || 0)) / 100, ox = $("#a_ox").value;
+    const row = { id: asset?.id, name: $("#a_name").value.trim(), category: $("#a_cat").value.trim(), tag: $("#a_tag").value.trim(), model: $("#a_model").value.trim(), serial: $("#a_serial").value.trim(), status: $("#a_status").value, notes: $("#a_notes").value.trim(), w: dim("a_w"), d: dim("a_d"), h: dim("a_h"), color: $("#a_col").value.toUpperCase() === "#7A8DA8" && !a.color ? "" : $("#a_col").value.toUpperCase(), ox: ox === "" ? null : Number(ox) / 100 };
+    if (!row.name) return;
+    try { const id = await saveAsset(row); await savePlace("asset", id, "ap", asset); await refreshAll(); done(); toast(asset ? "Saved" : row.name + " added"); } catch (err) {}
+  };
+}
 const againHtml = id => `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="${id}"> Add another here after saving</label>`;
 /* Add something to a shelf, cabinet or box straight from the Find page: new consumable, new tool, or one that is already in the app */
 function addHere(unitId, level) {
-  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : isTableUnit(u) ? (Number(level) === 2 ? " · under the table" : " · on the top") : " · level " + level);
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Add to ${esc(where)}</h2></div><div class="dlg-b"><p style="margin:0">What are you putting here?</p>
-    <div style="display:grid;gap:8px"><button type="button" class="btn" id="ah-c">New consumable <span style="font-weight:400">(screws, nuts, washers...)</span></button><button type="button" class="btn" id="ah-t">New tool</button><button type="button" class="btn sec" id="ah-e">Something already in the app</button></div></div>
+    <div style="display:grid;gap:8px"><button type="button" class="btn" id="ah-c">New consumable <span style="font-weight:400">(screws, nuts, washers...)</span></button><button type="button" class="btn" id="ah-t">New tool</button><button type="button" class="btn" id="ah-a">New asset <span style="font-weight:400">(a PC, instrument, machine...)</span></button><button type="button" class="btn sec" id="ah-e">Something already in the app</button></div></div>
     <div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`;
   if (!d.open) d.showModal();
   $("#ah-c").onclick = () => { state.placeDefault = { unit_id: unitId, level }; itemDialog(null); };
   $("#ah-t").onclick = () => { state.placeDefault = { unit_id: unitId, level }; openDialog(null); };
+  $("#ah-a").onclick = () => { state.placeDefault = { unit_id: unitId, level }; assetDialog(null); };
   $("#ah-e").onclick = () => placeExisting(unitId, level);
 }
 function placeExisting(unitId, level) {
-  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : isTableUnit(u) ? (Number(level) === 2 ? " · under the table" : " · on the top") : " · level " + level);
   const rows = () => { const q = ($("#pe-q")?.value || "").toLowerCase(), list = allEntries().filter(({ it }) => !q || fullName(it).toLowerCase().includes(q)).sort((a, b) => (a.it.unit_id ? 1 : 0) - (b.it.unit_id ? 1 : 0) || a.it.name.localeCompare(b.it.name)).slice(0, 40);
     return list.length ? list.map(({ kind, it }) => `<li><div class="nm"><strong>${esc(fullName(it))}</strong><div class="sub">${kindName(kind)} · ${it.unit_id === unitId && Number(it.level) === Number(level) ? "already here" : esc(whereText(it) || "not placed yet")}</div></div>${it.unit_id === unitId && Number(it.level) === Number(level) ? `<span class="chip in">Here</span>` : `<button type="button" class="btn sec" data-pk="${kind}:${it.id}">Place here</button>`}</li>`).join("") : `<li><div class="nm hint">Nothing matches.</div></li>`; };
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Place in ${esc(where)}</h2></div><div class="dlg-b"><div><label for="pe-q">Search</label><input id="pe-q" type="search" placeholder="name or size" autocomplete="off"></div><ul class="res" id="pe-l" style="max-height:46vh;overflow:auto">${rows()}</ul><p class="hint">Items not placed yet are listed first.</p></div>
@@ -682,7 +790,7 @@ function placeExisting(unitId, level) {
 }
 const unitById = id => (state.spaceUnits || []).find(x => x.id === id);
 function roomOfUnit(u) {
-  const b = (u.parent_id && unitById(u.parent_id)) || u;   // a box on a rack is in the rack's room
+  let b = u, n = 0; while (b.parent_id && unitById(b.parent_id) && n++ < 10) b = unitById(b.parent_id);   // a box on a rack is in the rack's room
   const sw = Number(b.rot) % 180 !== 0, cx = Number(b.x) + (sw ? b.d : b.w) / 2, cz = Number(b.z) + (sw ? b.w : b.d) / 2;
   const inside = pts => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
   return (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points)) || null;
@@ -1077,7 +1185,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "27";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "32";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1114,7 +1222,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + (u.parent_id ? "" : " · level " + it.level);
+  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 
@@ -1130,6 +1238,14 @@ async function onMainClick(ev) {
     else if (a === "scale-tools") requireAuth(() => setScaleMode("tools"));
     else if (a === "resolve") requireAuth(async () => { const id = el.dataset.id, tid = $("#rs-" + id)?.value; if (!tid) return; try { await guard(rpcAuth("toolscale_set_status", { p_tool: tid, p_status: el.dataset.to })); resolveEvent(id); await refreshAll(); renderTab(); toast("Fixed: " + (state.tools.find(t => t.id === tid)?.name || "tool") + " marked " + el.dataset.to); } catch (e) {} });
     else if (a === "resolve-skip") { resolveEvent(el.dataset.id); renderTab(); }
+    else if (a === "asset-add") requireAuth(() => assetDialog(null));
+    else if (a === "asset-add-here") requireAuth(() => { state.placeDefault = { unit_id: el.dataset.unit, level: Number(el.dataset.level) || 1 }; assetDialog(null); });
+    else if (a === "asset-edit") requireAuth(() => assetDialog(state.assets.find(x => x.id === el.dataset.id)));
+    else if (a === "asset-flip") requireAuth(async () => { const x = state.assets.find(i => i.id === el.dataset.id), sh = state.sheet; if (!x) return; try { await saveAsset({ ...x, status: x.status === "repair" ? "in_use" : "repair" }); await refreshAll(); if (sh && $("#dlg").open) itemSheet(sh.kind, sh.id); } catch (e) {} });
+    else if (a === "sim-all") { state.simAll = true; if (state.tab !== "home") setTab("home"); else renderHome(); $("#simSec")?.scrollIntoView({ block: "start" }); }
+    else if (a === "sim-skip") { const g = similarGroups().find(x => x.key === el.dataset.g); if (g) { const off = SIM_OFF(); off.push(g.sig); try { localStorage.setItem("ts_sim_off", JSON.stringify(off.slice(-100))); } catch (e) {} renderHome(); } }
+    else if (a === "sim-move") requireAuth(() => simMove(el.dataset.g));
+    else if (a === "sim-pick") requireAuth(() => simPick(el.dataset.g));
     else if (a === "goto-tools") setTab("tools");
     else if (a === "locate") locateItem(el.dataset.kind, el.dataset.id);
     else if (a === "goto-reorder") setTab("reorder");

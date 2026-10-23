@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, clipLast: null, pasteN: 0, esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -30,7 +30,22 @@
   const clashes = u => tops().filter(o => o.id !== u.id && o.kind !== "rack" && u.kind !== "rack" && overlaps2d(u, o) && vrange(u)[0] < vrange(o)[1] - 0.001 && vrange(o)[0] < vrange(u)[1] - 0.001);
   const parentOf = b => b.parent_id ? unit(b.parent_id) : null;
   const kids = r => S.units.filter(b => b.parent_id === r.id).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
-  const tops = () => S.units.filter(u => !parentOf(u));   // boxes on a rack live inside the rack, not on the floor plan
+  const tops = () => S.units.filter(u => !parentOf(u));
+  /* more than one unit can be selected (Shift or Ctrl click, Shift-drag a box, Ctrl+A); S.sel is then the last one picked */
+  const group = () => { const ids = S.multi.length > 1 ? S.multi : (S.sel && S.sel.kind === "unit" ? [S.sel.id] : []); return ids.map(unit).filter(Boolean); };
+  const inGroup = id => S.multi.length > 1 ? S.multi.includes(id) : !!(S.sel && S.sel.kind === "unit" && S.sel.id === id);
+  const normSel = () => { if (S.multi.length > 1 && !(S.sel && S.sel.kind === "unit" && S.multi.includes(S.sel.id))) S.multi = []; };
+  function setMulti(ids) {
+    ids = [...new Set(ids)].filter(id => { const u = unit(id); return u && !parentOf(u); });
+    if (ids.length > 1) { S.multi = ids; S.sel = { kind: "unit", id: ids[ids.length - 1] }; } else { S.multi = []; S.sel = ids.length ? { kind: "unit", id: ids[0] } : null; }
+  }
+  const spanOf = us => { let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; us.forEach(u => { const f = fp(u); x0 = Math.min(x0, f.x); z0 = Math.min(z0, f.z); x1 = Math.max(x1, f.x + f.w); z1 = Math.max(z1, f.z + f.d); }); return { x0, z0, x1, z1 }; };
+  /* turn units and room corners a quarter turn about a point (dir 1 = clockwise on the plan); each unit's front turns with it */
+  function rotateAbout(units, rooms, pivot, dir) {
+    const [px, pz] = pivot, rp = (x, z) => dir > 0 ? [px - (z - pz), pz + (x - px)] : [px + (z - pz), pz - (x - px)];
+    for (const r of rooms) r.points = r.points.map(q => { const t = rp(q[0], q[1]); return [r2(t[0]), r2(t[1])]; });
+    for (const u of units) { const f = fp(u), c = rp(f.x + f.w / 2, f.z + f.d / 2); u.rot = (u.rot + (dir > 0 ? 90 : 270)) % 360; const g = fp(u); u.x = r2(c[0] - g.w / 2); u.z = r2(c[1] - g.d / 2); }
+  }   // boxes on a rack live inside the rack, not on the floor plan
   /* boxes sit on a rack level in the order they were added, left to right */
   function boxLayout(r) {
     const f = fp(r), cx = f.x + f.w / 2, cz = f.z + f.d / 2, D = DIR[r.rot] || DIR[0], lh = r.h / r.levels, T = 0.03, acc = {}, out = [];
@@ -60,23 +75,32 @@
 
   async function load() {
     const [rooms, units] = await Promise.all([guard(sb.from("space_rooms").select("*").eq("active", true).order("created_at")), guard(sb.from("space_units").select("*").eq("active", true).order("created_at"))]);
-    S.rooms = rooms.map(num).filter(r => Array.isArray(r.points) && r.points.length >= 3); S.units = units.map(num);
+    S.rooms = rooms.map(num).filter(r => Array.isArray(r.points) && r.points.length >= 3); S.units = units.map(num); S.multi = S.multi.filter(id => S.units.some(u => u.id === id));
     if (S.sel && !(S.sel.kind === "unit" ? unit(S.sel.id) : room(S.sel.id))) S.sel = null;
   }
   const saveRoom = r => guard(rpcAuth("toolscale_space_room_poly", { p_id: r.id || null, p_name: r.name, p_points: r.points.map(p => [r2(p[0]), r2(p[1])]), p_h: r2(r.h) }));
   const saveUnit = u => { const rm = roomOf(u), p = parentOf(u); if (p) { u.x = p.x; u.z = p.z; } return guard(rpcAuth("toolscale_space_unit_v2", { p_id: u.id || null, p_room: rm ? rm.id : null, p_kind: u.kind, p_name: u.name, p_x: r2(u.x), p_z: r2(u.z), p_w: r2(u.w), p_d: r2(u.d), p_h: r2(u.h), p_rot: u.rot, p_levels: u.levels, p_color: u.color || null, p_elev: r2(u.elev || 0), p_parent: u.parent_id || null, p_plevel: u.parent_id ? (u.parent_level || 1) : null })); };
   /* edits save a moment after the last change, so dragging a slider or typing a size does not send a request on every keystroke */
+  const saveMany = us => Promise.all(us.filter(Boolean).map(u => saveUnit(u)));
   function scheduleSave(u) { clearTimeout(S.saveT); S.pending = u; S.saveT = setTimeout(flushSave, 600); }
-  function flushSave() { clearTimeout(S.saveT); const u = S.pending; S.pending = null; S.burst = false; if (u && unit(u.id)) return saveUnit(u).catch(() => {}); }
+  function flushSave() { clearTimeout(S.saveT); const p = S.pending; S.pending = null; S.burst = false; const list = [].concat(p || []).filter(u => u && unit(u.id)); if (!list.length) return; return Promise.all(list.map(u => saveUnit(u).catch(() => {}))); }
   /* undo: a snapshot is taken before each change (one per burst of typing or nudging) */
   function snapUndo(entry) { S.undo.push(entry); if (S.undo.length > 50) S.undo.shift(); paintUndo(); }
   const snapUnit = u => snapUndo({ kind: "unit", data: { ...u } });
+  const snapGroup = (units, rooms) => snapUndo({ kind: "group", units: units.map(u => ({ ...u })), rooms: (rooms || []).map(r => ({ id: r.id, points: r.points.map(p => p.slice()) })) });
+  function burstGroup(units) { if (!S.burst) { snapGroup(units); S.burst = true; } }
   function burstSnap(u) { if (!S.burst) { snapUnit(u); S.burst = true; } }
   async function undo() {
     const e = S.undo.pop(); paintUndo(); if (!e) return; await flushSave();
     try {
       if (e.kind === "unit") { const u = unit(e.data.id); if (!u) return; Object.assign(u, e.data); await saveUnit(u); S.sel = { kind: "unit", id: u.id }; }
       else if (e.kind === "room") { const r = room(e.id); if (!r) return; r.points = e.points; await saveRoom(r); S.sel = { kind: "room", id: r.id }; }
+      else if (e.kind === "group") {
+        for (const d of e.units) { const u = unit(d.id); if (u) { Object.assign(u, d); await saveUnit(u); } }
+        for (const r0 of e.rooms || []) { const r = room(r0.id); if (r) { r.points = r0.points.map(p => p.slice()); await saveRoom(r); } }
+        if (e.units.length > 1) setMulti(e.units.map(d => d.id)); else if (e.units.length) S.sel = { kind: "unit", id: e.units[0].id }; fitFront();
+      }
+      else if (e.kind === "adds") { for (const id of e.ids) await guard(rpcAuth("toolscale_space_remove", { p_kind: "unit", p_id: id })); await load(); S.sel = null; S.multi = []; }
       else if (e.kind === "add") { await guard(rpcAuth("toolscale_space_remove", { p_kind: "unit", p_id: e.id })); await load(); S.sel = null; }
       toast("Undone");
     } catch (err) {}
@@ -240,7 +264,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     g.lineWidth = 1; g.font = "11px sans-serif"; g.textBaseline = "top"; g.textAlign = "left"; const labelEvery = p > 50 ? 1 : p > 25 ? 2 : 5;
     for (let x = gx0; x <= gx1; x++) { g.strokeStyle = x % 5 === 0 ? "#B9C4C9" : "#DDE4E7"; g.beginPath(); g.moveTo(sx(x), 0); g.lineTo(sx(x), cv.height); g.stroke(); if (x % labelEvery === 0) { g.fillStyle = "#5B6B73"; g.fillText(x + " m", sx(x) + 2, 2); } }
     for (let z = gz0; z <= gz1; z++) { g.strokeStyle = z % 5 === 0 ? "#B9C4C9" : "#DDE4E7"; g.beginPath(); g.moveTo(0, sy(z)); g.lineTo(cv.width, sy(z)); g.stroke(); if (z % labelEvery === 0 && z !== gz0) { g.fillStyle = "#5B6B73"; g.fillText(z + " m", 2, sy(z) + 2); } }
-    let selRoom = null;
+    normSel(); let selRoom = null;
     for (const r of S.rooms) {
       const sel = S.sel && S.sel.kind === "room" && S.sel.id === r.id; if (sel) selRoom = r; g.beginPath(); r.points.forEach((q, i) => i ? g.lineTo(sx(q[0]), sy(q[1])) : g.moveTo(sx(q[0]), sy(q[1]))); g.closePath();
       g.fillStyle = sel ? "rgba(242,194,0,.14)" : "rgba(255,255,255,.95)"; g.fill(); g.strokeStyle = sel ? "#C99F00" : "#14232B"; g.lineWidth = sel ? 4 : 3; g.stroke();
@@ -249,13 +273,15 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     let selUnit = null;
     const raised = u => isTable(u) || u.elev > 0, order = [...tops().filter(u => !raised(u)), ...tops().filter(raised)];
     for (const u of order) {
-      const f = fp(u), x = sx(f.x), y = sy(f.z), w = f.w * p, h = f.d * p, sel = S.sel && S.sel.kind === "unit" && S.sel.id === u.id, n = contents(u).length, col = colorOf(u), over = raised(u), lt = over ? true : light(col);
-      if (sel) selUnit = u;
+      const f = fp(u), x = sx(f.x), y = sy(f.z), w = f.w * p, h = f.d * p, sel = inGroup(u.id), n = contents(u).length, col = colorOf(u), over = raised(u), lt = over ? true : light(col);
+      if (sel && S.multi.length <= 1) selUnit = u;
       g.fillStyle = col; g.globalAlpha = over ? .5 : .94; g.fillRect(x, y, w, h); g.globalAlpha = 1; const bad = clashes(u).length > 0; g.strokeStyle = sel ? "#F2C200" : bad ? "#B83A26" : "#14232B"; g.lineWidth = sel ? 4 : bad ? 3 : 1.5; if (over && !sel) g.setLineDash([7, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]);
       g.strokeStyle = lt ? "#14232B" : "#fff"; g.lineWidth = 3; g.beginPath();   // the front edge
       if (u.rot === 0) { g.moveTo(x + 3, y + h - 2); g.lineTo(x + w - 3, y + h - 2); } else if (u.rot === 90) { g.moveTo(x + 2, y + 3); g.lineTo(x + 2, y + h - 3); } else if (u.rot === 180) { g.moveTo(x + 3, y + 2); g.lineTo(x + w - 3, y + 2); } else { g.moveTo(x + w - 2, y + 3); g.lineTo(x + w - 2, y + h - 3); } g.stroke();
       g.save(); g.beginPath(); g.rect(x + 3, y + 3, w - 6, h - 6); g.clip(); g.fillStyle = lt ? "#14232B" : "#fff"; g.font = "600 12px sans-serif"; g.textBaseline = "top"; g.fillText(u.name + (u.elev > 0 && !isTable(u) ? " ↑" + cm(u.elev) : ""), x + 6, y + 6); if (n && h > 34) { g.font = "11px sans-serif"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x + 6, y + 21); } g.restore();
     }
+    if (S.multi.length > 1) { const gs = group(), sp = spanOf(gs); g.save(); g.strokeStyle = "#F2C200"; g.lineWidth = 2; g.setLineDash([8, 5]); g.strokeRect(sx(sp.x0) - 5, sy(sp.z0) - 5, (sp.x1 - sp.x0) * p + 10, (sp.z1 - sp.z0) * p + 10); g.restore(); dimLabel(g, gs.length + " selected", (sx(sp.x0) + sx(sp.x1)) / 2, sy(sp.z0) - 16, false); }
+    if (S.marq) { const x = Math.min(S.marq.x0, S.marq.x1), z = Math.min(S.marq.z0, S.marq.z1), w = Math.abs(S.marq.x1 - S.marq.x0), d = Math.abs(S.marq.z1 - S.marq.z0); g.save(); g.fillStyle = "rgba(36,96,122,.15)"; g.strokeStyle = "#24607A"; g.lineWidth = 1.5; g.setLineDash([6, 4]); g.fillRect(sx(x), sy(z), w * p, d * p); g.strokeRect(sx(x), sy(z), w * p, d * p); g.restore(); }
     if (selRoom) { edgeLengths(g, selRoom.points, true); selRoom.points.forEach(q => { g.fillStyle = "#fff"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.fillRect(sx(q[0]) - 6, sy(q[1]) - 6, 12, 12); g.strokeRect(sx(q[0]) - 6, sy(q[1]) - 6, 12, 12); }); }
     if (selUnit) {
       const f = fp(selUnit), x0 = sx(f.x), y0 = sy(f.z), x1 = sx(f.x + f.w), y1 = sy(f.z + f.d);
@@ -271,11 +297,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     tag("BACK", cv.width / 2, 22); tag("FRONT", cv.width / 2, cv.height - 10); tag("LEFT", 10, cv.height / 2, -Math.PI / 2); tag("RIGHT", cv.width - 10, cv.height / 2, Math.PI / 2); g.restore();
     drawFront(); paintInfo();
     const hint = $("#sHint"); if (hint) hint.textContent = S.tool === "rect" ? "Drag from one corner of the room to the opposite corner." : S.tool === "poly" ? "Click each corner of the room in order. Click the green first corner (or Finish room) to close it." : !state.user ? "Sign in (top right) to change things. You can still look around and pick things."
-      : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
+      : S.multi.length > 1 ? "Drag any selected unit to move them all. Shift or Ctrl click adds or removes one. Arrows nudge, R turns the group, Ctrl+C then Ctrl+V copies, Delete removes." : selUnit ? "Drag to move. Drag the yellow handles to resize. Shift or Ctrl click adds more units. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Shift-drag on empty space to select several (or Ctrl+A). Drag the empty background to move the view; scroll or pinch to zoom.";
   }
   /* snapping: edges of a moving or resizing unit stick to other units' edges and to walls */
   function snapLines(skipId) {
-    const xs = [], zs = []; tops().forEach(o => { if (o.id === skipId) return; const f = fp(o); xs.push(f.x, f.x + f.w); zs.push(f.z, f.z + f.d); });
+    const xs = [], zs = []; tops().forEach(o => { if (o.id === skipId || (Array.isArray(skipId) && skipId.includes(o.id))) return; const f = fp(o); xs.push(f.x, f.x + f.w); zs.push(f.z, f.z + f.d); });
     S.rooms.forEach(r => r.points.forEach(q => { xs.push(q[0]); zs.push(q[1]); })); return { xs, zs };
   }
   function snapEdge(v, list, out) { const thr = 8 / S.v.ppm; let best = null; list.forEach(c => { if (Math.abs(c - v) < thr && (best == null || Math.abs(c - v) < Math.abs(best - v))) best = c; }); if (best != null) { out.push(best); return best; } return null; }
@@ -290,7 +316,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const hitsAt = w => tops().filter(u => { const f = fp(u); return w.x >= f.x && w.x <= f.x + f.w && w.z >= f.z && w.z <= f.z + f.d; }).sort((a, b) => fp(a).w * fp(a).d - fp(b).w * fp(b).d);   // smallest on top, so a cabinet under a desk can still be picked
     const hitRoom = w => { for (let i = S.rooms.length - 1; i >= 0; i--) if (inPoly(w.x, w.z, S.rooms[i].points)) return S.rooms[i]; return null; };
     const hitVertex = w => { const r = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null; if (!r) return null; for (let i = 0; i < r.points.length; i++) if (Math.hypot(sx(r.points[i][0]) - w.px, sy(r.points[i][1]) - w.py) < 10) return { r, i }; return null; };
-    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u)) return null; const hit = handles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
+    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u) || S.multi.length > 1) return null; const hit = handles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
     const needSignIn = () => { if (!state.user) { toast("Sign in to change things."); return true; } return false; };
     const pts = new Map();
     cv.onpointerdown = e => {
@@ -300,9 +326,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (S.tool === "poly") { if (needSignIn()) return; const x = snapTo(w.x, 0.1), z = snapTo(w.z, 0.1), f = S.draft[0]; if (f && S.draft.length >= 3 && Math.hypot(sx(f[0]) - w.px, sy(f[1]) - w.py) < 12) { finishPoly(); return; } S.draft.push([x, z]); paintBar(); draw(); return; }
       const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: "resize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, moved: false }; return; }
       const hv = hitVertex(w); if (hv) { if (needSignIn()) return; S.drag = { kind: "vertex", r: hv.r, i: hv.i, orig: hv.r.points.map(q => q.slice()), moved: false }; return; }
-      const hits = hitsAt(w), u = hits.find(h => S.sel && S.sel.id === h.id) || hits[0];
-      if (u) { const was = !!(S.sel && S.sel.id === u.id); if (!was) { flushSave(); S.sel = { kind: "unit", id: u.id }; paintProps(); } draw(); if (needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was }; return; } const f = fp(u); S.drag = { kind: "unit", id: u.id, dx: w.x - f.x, dz: w.z - f.z, orig: { ...u }, moved: false, hits: hits.map(h => h.id), was }; return; }
-      const r = hitRoom(w), cur = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null;
+      const hits = hitsAt(w), add = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (add) {   // Shift or Ctrl: add or remove a unit, or drag a box on empty space to select several
+        if (hits.length) { flushSave(); const cur = group().map(x => x.id), t = hits[0]; setMulti(cur.includes(t.id) ? cur.filter(i => i !== t.id) : [...cur, t.id]); paintProps(); draw(); S.drag = { kind: "tap0" }; return; }
+        S.marq = { x0: w.x, z0: w.z, x1: w.x, z1: w.z, base: group().map(x => x.id) }; S.drag = { kind: "marq" }; return;
+      }
+      const u = hits.find(h => inGroup(h.id)) || hits[0];
+      if (u) { const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw(); if (needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; } const f = fp(u); S.drag = { kind: "unit", id: u.id, dx: w.x - f.x, dz: w.z - f.z, orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return; }
+      const r = hitRoom(w), cur = S.sel && S.sel.kind === "room" ? room(S.sel.id) : null; S.multi = [];
       flushSave(); if (r) S.sel = { kind: "room", id: r.id }; else if (!(cur && edgeNear(cur, w))) S.sel = null; paintProps(); draw();
       S.drag = { kind: "pan", px: w.px, py: w.py, ox: S.v.ox, oz: S.v.oz };
     };
@@ -312,11 +343,15 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (S.tool === "poly") { S.hover = [snapTo(w.x, 0.1), snapTo(w.z, 0.1)]; draw(); return; }
       if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "l" || hh.edge === "r" ? "ew-resize" : hh.edge === "br" ? "nwse-resize" : "ns-resize"; return; }
       if (d.kind === "pinch") { if (pts.size < 2) return; const [a, b] = [...pts.values()], dist = Math.hypot(a.px - b.px, a.py - b.py), mx = (a.px + b.px) / 2, my = (a.py + b.py) / 2, wx = mx / S.v.ppm + S.v.ox, wz = my / S.v.ppm + S.v.oz; S.v.ppm = clamp(d.ppm * dist / d.d0, 8, 400); S.v.ox = wx - mx / S.v.ppm; S.v.oz = wz - my / S.v.ppm; draw(); return; }
+      if (d.kind === "marq") { S.marq.x1 = w.x; S.marq.z1 = w.z; draw(); return; }
+      if (d.kind === "tap0") return;
       if (d.kind === "pan") { S.v.ox = d.ox - (w.px - d.px) / S.v.ppm; S.v.oz = d.oz - (w.py - d.py) / S.v.ppm; draw(); }
       else if (d.kind === "unit") {
-        const u = unit(d.id), f = fp(u), L = snapLines(u.id), gx = [], gz = []; let nx = snapTo(w.x - d.dx, 0.05), nz = snapTo(w.z - d.dz, 0.05);
+        const u = unit(d.id), f = fp(u), L = snapLines(d.grp ? d.grp.map(g0 => g0.id) : u.id), gx = [], gz = []; let nx = snapTo(w.x - d.dx, 0.05), nz = snapTo(w.z - d.dz, 0.05);
         if (!e.altKey) { const a = snapEdge(nx, L.xs, gx), b = a == null ? snapEdge(nx + f.w, L.xs, gx) : null; if (a != null) nx = a; else if (b != null) nx = b - f.w; const c = snapEdge(nz, L.zs, gz), dd = c == null ? snapEdge(nz + f.d, L.zs, gz) : null; if (c != null) nz = c; else if (dd != null) nz = dd - f.d; }
-        S.guides = { x: gx, z: gz }; if (nx !== u.x || nz !== u.z) d.moved = true; u.x = r2(nx); u.z = r2(nz); draw();
+        S.guides = { x: gx, z: gz }; if (nx !== u.x || nz !== u.z) d.moved = true; u.x = r2(nx); u.z = r2(nz);
+        if (d.grp) d.grp.forEach(g0 => { const gu = unit(g0.id); if (gu) { gu.x = r2(g0.orig.x + (u.x - d.orig.x)); gu.z = r2(g0.orig.z + (u.z - d.orig.z)); } });
+        draw();
       }
       else if (d.kind === "resize") {
         const u = unit(d.id), F = { ...d.f0 }, L = snapLines(u.id), gx = [], gz = [], E = d.edge; let x = snapTo(w.x, 0.05), z = snapTo(w.z, 0.05);
@@ -333,6 +368,10 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       pts.delete(e.pointerId); S.guides = null;
       if (S.tool === "rect" && S.rect) { const R = S.rect; S.rect = null; const w = Math.abs(R.x1 - R.x0), d = Math.abs(R.z1 - R.z0); if (w < 0.5 || d < 0.5) { draw(); return; } const x0 = Math.min(R.x0, R.x1), z0 = Math.min(R.z0, R.z1); roomDialog(null, [[x0, z0], [x0 + w, z0], [x0 + w, z0 + d], [x0, z0 + d]]); return; }
       const d = S.drag; S.drag = null; if (!d) { draw(); return; } if (d.kind === "pinch") { return; }
+      if (d.kind === "tap0") { draw(); return; }
+      if (d.kind === "marq") { const R = S.marq; S.marq = null; if (R) { const x0 = Math.min(R.x0, R.x1), x1 = Math.max(R.x0, R.x1), z0 = Math.min(R.z0, R.z1), z1 = Math.max(R.z0, R.z1); const got = tops().filter(u => { const f = fp(u); return f.x < x1 && f.x + f.w > x0 && f.z < z1 && f.z + f.d > z0; }).map(u => u.id); setMulti([...R.base, ...got]); paintProps(); } draw(); return; }
+      if (d.kind === "tap" && d.multi) { setMulti([d.id]); paintProps(); draw(); return; }
+      if (d.kind === "unit" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
       if ((d.kind === "tap" || (d.kind === "unit" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // clicking the same spot again picks what is underneath
       if ((d.kind === "unit" || d.kind === "resize") && d.moved) { const u = unit(d.id); snapUnit(d.orig); try { await saveUnit(u); paintProps(); } catch (e) { Object.assign(u, d.orig); S.undo.pop(); paintUndo(); } draw(); }
       else if (d.kind === "vertex" && d.moved) { snapUndo({ kind: "room", id: d.r.id, points: d.orig }); try { await saveRoom(d.r); } catch (e) { d.r.points = d.orig; S.undo.pop(); paintUndo(); } paintProps(); draw(); }
@@ -419,13 +458,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     }
     g.fillStyle = "#C9D2D6"; g.fillRect(0, E.base, W, H - E.base); g.fillStyle = "#14232B"; g.fillRect(0, E.base, W, 3);
     const order = tops().sort((a, b) => edepth(a) - edepth(b)); let selU = null;
-    for (const u of order) { const sel = S.sel && S.sel.kind === "unit" && S.sel.id === u.id; if (sel) selU = u; if (!sel) drawElev(g, u, false); }
+    normSel(); for (const u of order) { const sel = inGroup(u.id); if (sel && S.multi.length <= 1) selU = u; if (!(sel && S.multi.length <= 1)) drawElev(g, u, false); }
     if (selU) drawElev(g, selU, true);
+    if (S.multi.length > 1) group().forEach(u => { const e = aext(fp(u)), hh = hext(e[0], e[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.strokeRect(esx(hh[0]) - 1, esy((u.elev || 0) + u.h) - 1, (hh[1] - hh[0]) * S.ev.ppm + 2, u.h * S.ev.ppm + 2); });
     if (S.sel && S.sel.kind === "unit" && parentOf(unit(S.sel.id) || {})) { const b = unit(S.sel.id), p = parentOf(b), e = boxLayout(p).find(x => x.b.id === b.id); if (e) { const s = boxSpan(e), bh = hext(s[0], s[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.strokeRect(esx(bh[0]) - 1, esy(e.y + e.h) - 1, (bh[1] - bh[0]) * E.ppm + 2, e.h * E.ppm + 2); } }
     if (S.eg) { g.save(); g.strokeStyle = "#D9822B"; g.lineWidth = 1; g.setLineDash([6, 4]); S.eg.h.forEach(h => { g.beginPath(); g.moveTo(esx(h), 0); g.lineTo(esx(h), H); g.stroke(); }); S.eg.y.forEach(y => { g.beginPath(); g.moveTo(0, esy(y)); g.lineTo(W, esy(y)); g.stroke(); }); g.restore(); }
   }
-  function snapAxisLines(skipId) { const V = EV(), out = []; tops().forEach(o => { if (o.id === skipId) return; const e = aext(fp(o)); out.push(e[0], e[1]); }); S.rooms.forEach(r => r.points.forEach(q => out.push(V.axis === "x" ? q[0] : q[1]))); return out; }
-  function snapYLines(skipId) { const out = [0]; tops().forEach(o => { if (o.id === skipId) return; out.push(o.elev || 0, (o.elev || 0) + o.h); }); S.rooms.forEach(r => out.push(r.h)); return out; }
+  function snapAxisLines(skipId) { const V = EV(), out = []; tops().forEach(o => { if (o.id === skipId || (Array.isArray(skipId) && skipId.includes(o.id))) return; const e = aext(fp(o)); out.push(e[0], e[1]); }); S.rooms.forEach(r => r.points.forEach(q => out.push(V.axis === "x" ? q[0] : q[1]))); return out; }
+  function snapYLines(skipId) { const out = [0]; tops().forEach(o => { if (o.id === skipId || (Array.isArray(skipId) && skipId.includes(o.id))) return; out.push(o.elev || 0, (o.elev || 0) + o.h); }); S.rooms.forEach(r => out.push(r.h)); return out; }
   function snapV(v, list, out, thr) { let best = null; list.forEach(c => { if (Math.abs(c - v) < thr && (best == null || Math.abs(c - v) < Math.abs(best - v))) best = c; }); if (best != null) out.push(best); return best; }
   function bindFront() {
     const cv = $("#eCv"); if (!cv) return; const E = () => S.ev, V = () => EV();
@@ -435,29 +475,33 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       for (const r of tops().filter(u => u.kind === "rack")) for (const b of boxLayout(r)) { const s = boxSpan(b), hh = hext(s[0], s[1]); if (w.h >= hh[0] && w.h <= hh[1] && w.y >= b.y && w.y <= b.y + b.h) out.push(b.b); }
       return [...out, ...tops().filter(u => { const hh = hext(...aext(fp(u))); return w.h >= hh[0] && w.h <= hh[1] && w.y >= (u.elev || 0) && w.y <= (u.elev || 0) + u.h; }).sort((a, b) => edepth(b) - edepth(a))];
     };
-    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u)) return null; const hit = ehandles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
+    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u) || S.multi.length > 1) return null; const hit = ehandles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
     const needSignIn = () => { if (!state.user) { toast("Sign in to change things."); return true; } return false; };
     cv.onpointerdown = e => {
       const w = pt(e); cv.setPointerCapture(e.pointerId);
       const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: "eresize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, moved: false }; return; }
-      const hits = hitsE(w), u = hits.find(h => S.sel && S.sel.id === h.id) || hits[0];
+      const hits = hitsE(w);
+      if ((e.shiftKey || e.ctrlKey || e.metaKey) && hits.some(h => !parentOf(h))) { flushSave(); const cur = group().map(x => x.id), t = hits.find(h => !parentOf(h)); setMulti(cur.includes(t.id) ? cur.filter(i => i !== t.id) : [...cur, t.id]); paintProps(); draw(); S.drag = { kind: "tap0" }; return; }
+      const u = hits.find(h => inGroup(h.id)) || hits[0];
       if (u) {
-        const was = !!(S.sel && S.sel.id === u.id); if (!was) { flushSave(); S.sel = { kind: "unit", id: u.id }; paintProps(); } draw();
-        if (parentOf(u) || needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was }; return; }
-        const e0 = aext(fp(u)); S.drag = { kind: "emove", id: u.id, a: V().sign * w.h, a0: e0[0], ext: e0[1] - e0[0], y: w.y, e0: u.elev || 0, canLift: !isTable(u) && u.kind !== "rack", orig: { ...u }, moved: false, hits: hits.map(h => h.id), was }; return;
+        const multi = S.multi.length > 1 && inGroup(u.id), was = !multi && !!(S.sel && S.sel.id === u.id); if (!multi && !was) { flushSave(); S.multi = []; S.sel = { kind: "unit", id: u.id }; paintProps(); } draw();
+        if (parentOf(u) || needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was, multi, id: u.id }; return; }
+        const e0 = aext(fp(u)); S.drag = { kind: "emove", id: u.id, a: V().sign * w.h, a0: e0[0], ext: e0[1] - e0[0], y: w.y, e0: u.elev || 0, canLift: !isTable(u) && u.kind !== "rack", orig: { ...u }, moved: false, hits: hits.map(h => h.id), was, grp: multi ? group().map(x => ({ id: x.id, orig: { ...x } })) : null }; return;
       }
-      flushSave(); S.sel = null; paintProps(); draw(); S.drag = { kind: "epan", px: w.px, py: w.py, h0: E().h0, base: E().base };
+      flushSave(); S.multi = []; S.sel = null; paintProps(); draw(); S.drag = { kind: "epan", px: w.px, py: w.py, h0: E().h0, base: E().base };
     };
     cv.onpointermove = e => {
       const w = pt(e), d = S.drag, Ev = E(); if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "min" || hh.edge === "max" ? "ew-resize" : "ns-resize"; return; }
       if (d.kind === "epan") { Ev.h0 = d.h0 - (w.px - d.px) / Ev.ppm; Ev.base = d.base + (w.py - d.py); drawFront(); return; }
+      if (d.kind === "tap0") return;
       const u = unit(d.id); if (!u) return; const thr = 8 / Ev.ppm, gh = [], gy = [], a = V().sign * w.h, alt = e.altKey, x = V().axis === "x";
       if (d.kind === "emove") {
-        const lines = snapAxisLines(u.id); let a0 = snapTo(d.a0 + (a - d.a), 0.05);
+        const lines = snapAxisLines(d.grp ? d.grp.map(g0 => g0.id) : u.id); let a0 = snapTo(d.a0 + (a - d.a), 0.05);
         if (!alt) { const s1 = snapV(a0, lines, gh, thr); if (s1 != null) a0 = s1; else { const s2 = snapV(a0 + d.ext, lines, gh, thr); if (s2 != null) a0 = s2 - d.ext; } }
         if (x) u.x = r2(a0); else u.z = r2(a0);
-        if (d.canLift) { let e0 = Math.max(0, snapTo(d.e0 + (w.y - d.y), 0.05)); if (!alt) { const yl = snapYLines(u.id), s1 = snapV(e0, yl, gy, thr); if (s1 != null) e0 = s1; else { const s2 = snapV(e0 + u.h, yl, gy, thr); if (s2 != null) e0 = Math.max(0, s2 - u.h); } } u.elev = r2(e0); }
+        if (d.canLift) { let e0 = Math.max(0, snapTo(d.e0 + (w.y - d.y), 0.05)); if (!alt) { const yl = snapYLines(d.grp ? d.grp.map(g0 => g0.id) : u.id), s1 = snapV(e0, yl, gy, thr); if (s1 != null) e0 = s1; else { const s2 = snapV(e0 + u.h, yl, gy, thr); if (s2 != null) e0 = Math.max(0, s2 - u.h); } } u.elev = r2(e0); }
         if (Math.abs(a0 - d.a0) > 0.001 || (d.canLift && Math.abs((u.elev || 0) - d.e0) > 0.001)) d.moved = true;
+        if (d.grp) { const da = a0 - d.a0, de = d.canLift ? (u.elev || 0) - d.e0 : snapTo(w.y - d.y, 0.05); if (Math.abs(de) > 0.001) d.moved = true; d.grp.forEach(g0 => { const gu = unit(g0.id); if (!gu) return; if (x) gu.x = r2(g0.orig.x + da); else gu.z = r2(g0.orig.z + da); if (!isTable(gu) && gu.kind !== "rack") gu.elev = Math.max(0, r2((g0.orig.elev || 0) + de)); }); }
       } else if (d.kind === "eresize") {
         const F = { ...d.f0 }, ed = d.edge;
         if (ed === "min" || ed === "max") {
@@ -473,6 +517,9 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     };
     const up = async e => {
       S.eg = null; const d = S.drag; S.drag = null; if (!d) { draw(); return; }
+      if (d.kind === "tap0") { draw(); return; }
+      if (d.kind === "tap" && d.multi) { setMulti([d.id]); paintProps(); draw(); return; }
+      if (d.kind === "emove" && d.grp) { if (d.moved) { snapGroup(d.grp.map(g0 => g0.orig)); try { await saveMany(d.grp.map(g0 => unit(g0.id))); } catch (err) { await load(); } paintProps(); } else { setMulti([d.id]); paintProps(); } draw(); return; }
       if ((d.kind === "tap" || (d.kind === "emove" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // click the same spot again to pick what is behind
       if ((d.kind === "emove" || d.kind === "eresize") && d.moved) { const u = unit(d.id); snapUnit(d.orig); try { await saveUnit(u); paintProps(); } catch (err) { Object.assign(u, d.orig); S.undo.pop(); paintUndo(); } }
       draw();
@@ -480,8 +527,42 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     cv.onpointerup = up; cv.onpointercancel = up;
     cv.onwheel = e => { e.preventDefault(); const w = pt(e), Ev = E(), f = e.deltaY < 0 ? 1.12 : 0.89; Ev.ppm = clamp(Ev.ppm * f, 10, 400); Ev.h0 = w.h - w.px / Ev.ppm; Ev.base = w.py + w.y * Ev.ppm; drawFront(); };
   }
+  function copyGroup() { const gs = group(); if (!gs.length) return; S.clip = gs.map(g0 => ({ ...g0 })); S.clipLast = null; S.pasteN = 0; toast(gs.length > 1 ? "Copied " + gs.length + " units. Press Ctrl+V to paste them." : "Copied " + gs[0].name + ". Press Ctrl+V to paste a copy."); }
+  async function pasteGroup() {   // the copies go in a block below the originals, each paste further down
+    const c = S.clip.filter(x => !x.parent_id); if (!c.length) return; const sp = spanOf(c); S.pasteN = (S.pasteN || 0) + 1; const dz = (sp.z1 - sp.z0 + 0.1) * S.pasteN, ids = []; await flushSave();
+    try { for (const src of c) ids.push(await saveUnit({ ...src, id: null, name: src.name.replace(/ copy( \d+)?$/, "") + " copy" + (S.pasteN > 1 ? " " + S.pasteN : ""), z: r2(src.z + dz) })); } catch (e) {}
+    if (!ids.length) return; snapUndo({ kind: "adds", ids }); await load(); setMulti(ids); paintProps(); draw();
+  }
+  function nudgeGroup(gs, dx, dz, de) {
+    const step = (Number($("#nStep")?.value) || 5) / 100; burstGroup(gs);
+    gs.forEach(g0 => { g0.x = r2(g0.x + dx * step); g0.z = r2(g0.z + dz * step); if (de && !isTable(g0) && g0.kind !== "rack") g0.elev = Math.max(0, r2((g0.elev || 0) + de * step)); }); draw(); scheduleSave(gs);
+  }
+  async function turnGroup(dir) {
+    const gs = group(); if (!gs.length) return; await flushSave(); snapGroup(gs); const sp = spanOf(gs); rotateAbout(gs, [], [snapTo((sp.x0 + sp.x1) / 2, 0.05), snapTo((sp.z0 + sp.z1) / 2, 0.05)], dir);
+    try { await saveMany(gs); } catch (e) { await load(); } paintProps(); draw();
+  }
+  function alignGroup(how) {
+    const gs = group(), sp = spanOf(gs); snapGroup(gs);
+    gs.forEach(g0 => { const f = fp(g0); if (how === "l") g0.x = r2(sp.x0); else if (how === "r") g0.x = r2(sp.x1 - f.w); else if (how === "c") g0.x = r2((sp.x0 + sp.x1) / 2 - f.w / 2); else if (how === "t") g0.z = r2(sp.z0); else if (how === "b") g0.z = r2(sp.z1 - f.d); else if (how === "m") g0.z = r2((sp.z0 + sp.z1) / 2 - f.d / 2); });
+    saveMany(gs).catch(() => load()); draw(); paintProps();
+  }
+  async function removeMany(gs) {
+    if (!confirm("Remove " + gs.length + " units? Boxes on them go too, and items stored there become unplaced.")) return;
+    await flushSave(); try { for (const g0 of gs) await guard(rpcAuth("toolscale_space_remove", { p_kind: "unit", p_id: g0.id })); S.sel = null; S.multi = []; S.undo = []; await load(); await refreshAll(); paintBar(); paintProps(); draw(); } catch (e) {}
+  }
+  /* turn or move a whole room together with every unit inside it */
+  async function turnRoom(r, dir) {
+    await flushSave(); const us = tops().filter(u => roomOf(u) === r); snapGroup(us, [r]); const xs = r.points.map(q => q[0]), zs = r.points.map(q => q[1]);
+    rotateAbout(us, [r], [snapTo((Math.min(...xs) + Math.max(...xs)) / 2, 0.05), snapTo((Math.min(...zs) + Math.max(...zs)) / 2, 0.05)], dir);
+    try { await saveRoom(r); await saveMany(us); } catch (e) { await load(); } fitView(); fitFront(); paintProps(); draw();
+  }
+  async function moveRoom(r, dx, dz) {
+    await flushSave(); const us = tops().filter(u => roomOf(u) === r), step = (Number($("#nStep")?.value) || 10) / 100; snapGroup(us, [r]);
+    r.points = r.points.map(q => [r2(q[0] + dx * step), r2(q[1] + dz * step)]); us.forEach(u => { u.x = r2(u.x + dx * step); u.z = r2(u.z + dz * step); });
+    try { await saveRoom(r); await saveMany(us); } catch (e) { await load(); } paintProps(); draw();
+  }
   async function pasteClip() {   // each paste goes next to the one before, so you can lay a row of copies
-    const c = S.clip; if (c.parent_id && !unit(c.parent_id)) return toast("The rack it was on is gone.");
+    const c = S.clip[0]; if (c.parent_id && !unit(c.parent_id)) return toast("The rack it was on is gone.");
     const last = S.clipLast && unit(S.clipLast), base = c.name.replace(/ copy( \d+)?$/, ""); S.pasteN = last ? S.pasteN + 1 : 1;
     await addUnit(c.kind, last || c, base + " copy" + (S.pasteN > 1 ? " " + S.pasteN : ""));
     S.clipLast = S.sel && S.sel.kind === "unit" ? S.sel.id : null;
@@ -490,10 +571,20 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (!S.view || $("#dlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const ctrl = e.ctrlKey || e.metaKey, u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (state.user) undo(); return; }
-    if (e.key === "Escape") { flushSave(); S.sel = null; S.draft = []; S.rect = null; paintBar(); paintProps(); draw(); return; }
-    if (ctrl && e.key.toLowerCase() === "c" && u) { e.preventDefault(); S.clip = { ...u }; S.clipLast = null; S.pasteN = 0; toast("Copied " + u.name + ". Press Ctrl+V to paste a copy."); return; }
-    if (ctrl && e.key.toLowerCase() === "v" && S.clip) { e.preventDefault(); if (!state.user) { toast("Sign in to paste."); return; } pasteClip(); return; }
+    if (ctrl && e.key.toLowerCase() === "a") { e.preventDefault(); setMulti(tops().map(x => x.id)); paintProps(); draw(); return; }
+    if (e.key === "Escape") { flushSave(); S.multi = []; S.sel = null; S.draft = []; S.rect = null; paintBar(); paintProps(); draw(); return; }
+    if (ctrl && e.key.toLowerCase() === "c" && u) { e.preventDefault(); copyGroup(); return; }
+    if (ctrl && e.key.toLowerCase() === "v" && S.clip && S.clip.length) { e.preventDefault(); if (!state.user) { toast("Sign in to paste."); return; } if (S.clip.length > 1) pasteGroup(); else pasteClip(); return; }
     if (!u || !state.user) return;
+    if (S.multi.length > 1) {
+      const gs = group(), st = e.shiftKey ? 0.5 : 0.05, mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
+      if (mv) { e.preventDefault(); burstGroup(gs); gs.forEach(g0 => { g0.x = r2(g0.x + mv[0]); g0.z = r2(g0.z + mv[1]); }); draw(); scheduleSave(gs); return; }
+      if ((e.key === "PageUp" || e.key === "PageDown")) { e.preventDefault(); burstGroup(gs); gs.forEach(g0 => { if (!isTable(g0) && g0.kind !== "rack") g0.elev = Math.max(0, r2((g0.elev || 0) + (e.key === "PageUp" ? 1 : -1) * st)); }); draw(); scheduleSave(gs); return; }
+      if (e.key.toLowerCase() === "r" && !ctrl) { e.preventDefault(); turnGroup(e.shiftKey ? -1 : 1); return; }
+      if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); copyGroup(); pasteGroup(); return; }
+      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeMany(gs); }
+      return;
+    }
     if (parentOf(u)) { if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); } return; }
     const step = e.shiftKey ? 0.5 : 0.05, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
     if (mv) { e.preventDefault(); burstSnap(u); u.x = r2(u.x + mv[0]); u.z = r2(u.z + mv[1]); draw(); paintPos(u); scheduleSave(u); return; }
@@ -524,6 +615,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function paintPos(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uX", r2(u.x)); s("uZ", r2(u.z)); }
   function paintInfo() {
     const el = $("#sInfo"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
+    if (S.multi.length > 1) { el.textContent = S.multi.length + " units selected"; return; }
     el.textContent = u ? u.name + " · " + cm(u.w) + " × " + cm(u.d) + " × " + cm(u.h) + " cm" + (u.elev > 0 ? " · " + cm(u.elev) + " cm up" : "") : S.rooms.length + " room" + (S.rooms.length === 1 ? "" : "s") + ", " + tops().length + " unit" + (tops().length === 1 ? "" : "s");
   }
   const SIZES_BOX = [[40, 30, 25], [60, 40, 30], [30, 20, 15], [25, 25, 25]];
@@ -542,12 +634,19 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       const r = room(s.id); if (!r) return; const inside = tops().filter(u => roomOf(u) === r);
       el.innerHTML = `<h2>${esc(r.name)} <span class="chipk">Room</span></h2><p class="hint">${r2(area(r.points))} m² · ${r.points.length} corners · walls ${r.h} m high · ${inside.length} unit${inside.length === 1 ? "" : "s"} inside</p>
         <p>Drag a corner on the top view to reshape the room. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
+        <div class="row"><button class="btn" id="rTurnL">↺ Turn room</button><button class="btn" id="rTurnR">Turn room ↻</button></div>
+        <p class="hint">Turns the room and the ${inside.length} unit${inside.length === 1 ? "" : "s"} inside it together, a quarter turn at a time.</p>
+        <div class="row" style="align-items:center;gap:16px;margin:8px 0"><div class="nudge" role="group" aria-label="Move the room and its units"><span></span><button type="button" data-rn="0,-1" aria-label="Up">▲</button><span></span><button type="button" data-rn="-1,0" aria-label="Left">◀</button><span></span><button type="button" data-rn="1,0" aria-label="Right">▶</button><span></span><button type="button" data-rn="0,1" aria-label="Down">▼</button><span></span></div>
+          <div style="display:grid;gap:4px"><span class="hint" style="margin:0">Move room and units</span><select id="nStep" class="sel" aria-label="Move step"><option value="5">5 cm</option><option value="10" selected>10 cm</option><option value="50">50 cm</option><option value="100">1 m</option></select></div></div>
         <div class="row" style="margin-top:10px"><button class="btn sec" id="rEdit">Rename or change height</button><button class="btn danger" id="rDel">Remove room</button></div>`;
+      $("#rTurnL").onclick = () => requireAuth(() => turnRoom(r, -1)); $("#rTurnR").onclick = () => requireAuth(() => turnRoom(r, 1));
+      el.querySelectorAll("[data-rn]").forEach(b => b.onclick = () => requireAuth(() => { const [dx, dz] = b.dataset.rn.split(",").map(Number); moveRoom(r, dx, dz); }));
       $("#rEdit").onclick = () => requireAuth(() => roomDialog(r));
       $("#rDel").onclick = () => requireAuth(async () => { if (!confirm("Remove " + r.name + "? The shelves and cabinets stay where they are.")) return; try { await guard(rpcAuth("toolscale_space_remove", { p_kind: "room", p_id: r.id })); S.sel = null; S.undo = S.undo.filter(x => x.id !== r.id); await load(); await refreshAll(); paintBar(); paintProps(); fitFront(); draw(); } catch (e) {} });
       return;
     }
-    const u = s && s.kind === "unit" ? unit(s.id) : null;
+    normSel(); const u = s && s.kind === "unit" ? unit(s.id) : null;
+    if (u && S.multi.length > 1) return groupProps(el, group());
     if (!u) { el.innerHTML = `<h2>Your space</h2><p class="hint">${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"} · ${tops().length} unit${tops().length === 1 ? "" : "s"}</p>
       <ol style="padding-left:20px;display:grid;gap:6px;margin:0 0 10px"><li>Draw a room with <strong>Room: rectangle</strong> or <strong>Room: corners</strong>.</li><li>Press <strong>＋ Add</strong> for a shelf, cabinet, wall cabinet, drawers, workbench, PC desk or rack.</li><li>Drag it in the <strong>top view</strong> to place it on the floor, and in the <strong>front view</strong> to set how high it is.</li></ol>
       <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>`; return; }
@@ -612,6 +711,28 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#uDup").onclick = () => requireAuth(() => addUnit(u.kind, u));
     $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); };
     $("#uDel").onclick = () => requireAuth(() => removeUnit(u));
+  }
+  function groupProps(el, gs) {
+    const ro = !state.user, lift = gs.some(g0 => !isTable(g0) && g0.kind !== "rack");
+    el.innerHTML = `<h2>${gs.length} selected <span class="chipk">Group</span></h2><p class="hint">${esc(gs.slice(0, 6).map(g0 => g0.name).join(", "))}${gs.length > 6 ? "…" : ""}</p>
+      <fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
+      ${sec("gmove", "Move and turn", `<div class="row" style="align-items:center;gap:16px"><div class="nudge" role="group" aria-label="Nudge the group"><span></span><button type="button" data-n="0,-1,0" aria-label="Up on the plan">▲</button><span></span><button type="button" data-n="-1,0,0" aria-label="Left">◀</button><span></span><button type="button" data-n="1,0,0" aria-label="Right">▶</button><span></span><button type="button" data-n="0,1,0" aria-label="Down on the plan">▼</button><span></span></div>
+        <div style="display:grid;gap:4px">${lift ? `<button type="button" class="nbtn" data-n="0,0,1">⤒ Raise</button><button type="button" class="nbtn" data-n="0,0,-1">⤓ Lower</button>` : ""}<select id="nStep" class="sel" aria-label="Nudge step"><option value="1">1 cm</option><option value="5" selected>5 cm</option><option value="10">10 cm</option><option value="50">50 cm</option></select></div></div>
+        <div class="row" style="margin-top:10px"><button type="button" class="btn sec" id="gTurnL">↺ Turn group</button><button type="button" class="btn sec" id="gTurnR">Turn group ↻</button></div>
+        <p class="hint">Turns them together about their middle, each unit's front turning with it. Drag any selected unit in either view to move them all.</p>`)}
+      ${sec("galign", "Align", `<div class="row" style="gap:6px">${[["l", "Left"], ["c", "Centre"], ["r", "Right"], ["t", "Top"], ["m", "Middle"], ["b", "Bottom"]].map(([k, l]) => `<button type="button" class="btn sec" data-al="${k}" style="padding:6px 10px">${l}</button>`).join("")}</div><p class="hint">Lines the units up on the plan.</p>`)}
+      ${sec("gcol", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches("")}<button type="button" class="linkbtn" id="gColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`, false)}
+      <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="gDup">Duplicate</button><button type="button" class="btn sec" id="gClear">Deselect</button><button type="button" class="btn danger" id="gDel">Remove</button></div></fieldset>
+      <p class="hint" style="margin-top:10px">Shift or Ctrl click adds or removes a unit. Shift-drag on empty space draws a box around several. Ctrl+A selects all.</p>`;
+    bindSecs(el);
+    el.querySelectorAll("[data-n]").forEach(b => b.onclick = () => requireAuth(() => { const [dx, dz, de] = b.dataset.n.split(",").map(Number); nudgeGroup(gs, dx, dz, de); }));
+    $("#gTurnL").onclick = () => requireAuth(() => turnGroup(-1)); $("#gTurnR").onclick = () => requireAuth(() => turnGroup(1));
+    el.querySelectorAll("[data-al]").forEach(b => b.onclick = () => requireAuth(() => alignGroup(b.dataset.al)));
+    const paint = c => requireAuth(async () => { await flushSave(); snapGroup(gs); gs.forEach(g0 => { g0.color = c; }); draw(); try { await saveMany(gs); } catch (e) { await load(); } paintProps(); });
+    el.querySelectorAll(".sw").forEach(b => b.onclick = () => paint(b.dataset.col)); $("#gColDef").onclick = () => paint(null);
+    $("#gDup").onclick = () => requireAuth(async () => { copyGroup(); await pasteGroup(); });
+    $("#gClear").onclick = () => { S.multi = []; S.sel = null; paintProps(); draw(); };
+    $("#gDel").onclick = () => requireAuth(() => removeMany(gs));
   }
   async function addBox(rack, level) {
     await flushSave(); const lh = rack.h / rack.levels, n = kids(rack).length + 1;

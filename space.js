@@ -1113,10 +1113,24 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const asset = S.hl && String(S.hl).startsWith("a:") ? (state.assets || []).find(x => "a:" + x.id === S.hl) : null;   // an asset on a table: show its table, with the asset highlighted
     S.sel = asset ? (asset.unit_id ? { kind: "unit", id: asset.unit_id } : null) : S.hl ? { kind: "unit", id: S.hl } : null; S.focusItem = null; paintSide();
   }
+  /* glide the camera to a spot, standing in front of the thing (th is the angle around it, ph how high we look from) */
+  function flyTo(g) {
+    const k = S.t, C = k.C, from = { tx: C.tx, ty: C.ty, tz: C.tz, dist: C.dist, th: C.th, ph: C.ph }, t0 = performance.now(), id = k.fly = (k.fly || 0) + 1;
+    let dth = g.th - from.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth));   // the short way round
+    const step = now => {
+      if (!S.t || k.fly !== id) return; const t = Math.min(1, (now - t0) / 650), e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      C.tx = from.tx + (g.tx - from.tx) * e; C.ty = from.ty + (g.ty - from.ty) * e; C.tz = from.tz + (g.tz - from.tz) * e; C.dist = from.dist + (g.dist - from.dist) * e; C.th = from.th + dth * e; C.ph = from.ph + (g.ph - from.ph) * e; camUpdate();
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
   function focusUnit(uid) {
-    const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null, C = k.C;
-    if (ae) { C.tx = ae.cx; C.tz = ae.cz; C.ty = ae.y + ae.h / 2; C.dist = Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3); camUpdate(); return; }
-    const u = unit(uid); if (!u) return; const a = anchor(u); C.tx = a.x; C.tz = a.z; C.ty = (a.y0 + a.y1) / 2; C.dist = Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4); camUpdate(); }
+    const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null;
+    const front = u => { const D = DIR[(rootOf(u) || u).rot] || DIR[0]; return Math.atan2(-D.F[1], -D.F[0]); };   // camera on the side the unit faces
+    if (ae) { const t = unit((state.assets || []).find(x => "a:" + x.id === "a:" + String(uid).slice(2))?.unit_id); flyTo({ tx: ae.cx, tz: ae.cz, ty: ae.y + ae.h / 2, dist: Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3), th: t ? front(t) : k.C.th, ph: 1.2 }); return; }
+    const u = unit(uid); if (!u) return; const a = anchor(u);
+    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 });
+  }
   function focusItem(kind, id) {
     const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
     S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();

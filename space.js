@@ -184,11 +184,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#zIn").onclick = () => zoom(1.25); $("#zOut").onclick = () => zoom(0.8); $("#zFit").onclick = () => { fitView(); fitFront(); draw(); }; $("#sUndo").onclick = () => requireAuth(undo);
     const fin = $("#pFin"); if (fin) fin.onclick = finishPoly; const un = $("#pUndo"); if (un) un.onclick = () => { S.draft.pop(); paintBar(); draw(); }; const ca = $("#pCancel"); if (ca) ca.onclick = () => { S.draft = []; S.tool = "select"; paintBar(); draw(); };
   }
-  async function addUnit(key, from) {
+  async function addUnit(key, from, name) {
     await flushSave(); const cv = $("#sCv"), sp = ADDS[key] || {}, kind = from ? from.kind : (sp.kind || key), k = KINDS[kind], label = sp.label || k.label, n = S.units.filter(x => x.name.startsWith(label)).length + 1;
-    const u = from ? { ...from, id: null, name: from.name + " copy" } : { kind, name: label + " " + n, w: sp.w ?? k.w, d: sp.d ?? k.d, h: sp.h ?? k.h, rot: 0, levels: sp.levels ?? k.levels, color: null, elev: sp.elev ?? 0 };
+    const u = from ? { ...from, id: null, name: name || from.name + " copy" } : { kind, name: label + " " + n, w: sp.w ?? k.w, d: sp.d ?? k.d, h: sp.h ?? k.h, rot: 0, levels: sp.levels ?? k.levels, color: null, elev: sp.elev ?? 0 };
     if (from && from.parent_id) { /* a copy of a box stays on the same rack */ }
-    else if (from) { const f = fp(from); u.x = snapTo(from.x + (f.w < f.d ? f.w : 0) + 0.05, 0.05); u.z = snapTo(from.z + (f.w < f.d ? 0 : f.d) + 0.05, 0.05); }   // copies go right next to the original
+    else if (from) { const f = fp(from); if (f.w < f.d) { u.x = snapTo(from.x + f.w + 0.05, 0.05); u.z = from.z; } else { u.x = from.x; u.z = snapTo(from.z + f.d + 0.05, 0.05); } }   // copies line up next to the original: beside a tall one, below a wide one
     else { u.x = snapTo(S.v.ox + cv.width / 2 / S.v.ppm - u.w / 2, 0.05); u.z = snapTo(S.v.oz + cv.height / 2 / S.v.ppm - u.d / 2, 0.05); }
     if (!from && key === "wall" && !snapToWall(u, true)) toast("Drag it against a wall, then press Snap to wall.");
     try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); } catch (e) {}
@@ -271,7 +271,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     tag("BACK", cv.width / 2, 22); tag("FRONT", cv.width / 2, cv.height - 10); tag("LEFT", 10, cv.height / 2, -Math.PI / 2); tag("RIGHT", cv.width - 10, cv.height / 2, Math.PI / 2); g.restore();
     drawFront(); paintInfo();
     const hint = $("#sHint"); if (hint) hint.textContent = S.tool === "rect" ? "Drag from one corner of the room to the opposite corner." : S.tool === "poly" ? "Click each corner of the room in order. Click the green first corner (or Finish room) to close it." : !state.user ? "Sign in (top right) to change things. You can still look around and pick things."
-      : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+D copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
+      : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+C then Ctrl+V copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
   }
   /* snapping: edges of a moving or resizing unit stick to other units' edges and to walls */
   function snapLines(skipId) {
@@ -480,11 +480,19 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     cv.onpointerup = up; cv.onpointercancel = up;
     cv.onwheel = e => { e.preventDefault(); const w = pt(e), Ev = E(), f = e.deltaY < 0 ? 1.12 : 0.89; Ev.ppm = clamp(Ev.ppm * f, 10, 400); Ev.h0 = w.h - w.px / Ev.ppm; Ev.base = w.py + w.y * Ev.ppm; drawFront(); };
   }
+  async function pasteClip() {   // each paste goes next to the one before, so you can lay a row of copies
+    const c = S.clip; if (c.parent_id && !unit(c.parent_id)) return toast("The rack it was on is gone.");
+    const last = S.clipLast && unit(S.clipLast), base = c.name.replace(/ copy( \d+)?$/, ""); S.pasteN = last ? S.pasteN + 1 : 1;
+    await addUnit(c.kind, last || c, base + " copy" + (S.pasteN > 1 ? " " + S.pasteN : ""));
+    S.clipLast = S.sel && S.sel.kind === "unit" ? S.sel.id : null;
+  }
   function onKey(e) {
     if (!S.view || $("#dlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const ctrl = e.ctrlKey || e.metaKey, u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
     if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (state.user) undo(); return; }
     if (e.key === "Escape") { flushSave(); S.sel = null; S.draft = []; S.rect = null; paintBar(); paintProps(); draw(); return; }
+    if (ctrl && e.key.toLowerCase() === "c" && u) { e.preventDefault(); S.clip = { ...u }; S.clipLast = null; S.pasteN = 0; toast("Copied " + u.name + ". Press Ctrl+V to paste a copy."); return; }
+    if (ctrl && e.key.toLowerCase() === "v" && S.clip) { e.preventDefault(); if (!state.user) { toast("Sign in to paste."); return; } pasteClip(); return; }
     if (!u || !state.user) return;
     if (parentOf(u)) { if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); } return; }
     const step = e.shiftKey ? 0.5 : 0.05, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];

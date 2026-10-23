@@ -1185,7 +1185,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "36";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "37";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();

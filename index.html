@@ -731,7 +731,7 @@ function paintSheet() {
       : tool ? `${it.status === "out" && !loanFor("tool", it.id) ? `<button type="button" class="btn sec" data-act="flip" data-id="${it.id}" data-to="in">Mark in</button>` : ""}
         <button type="button" class="btn sec" data-act="report" data-kind="tool" data-id="${it.id}">Report a problem</button>
         <button type="button" class="btn sec" data-act="edit" data-id="${it.id}">Edit</button>`
-      : `<button type="button" class="btn sec" data-act="count-item" data-id="${it.id}">Count it</button>
+      : `<button type="button" class="btn sec" data-act="add-stock" data-id="${it.id}">Add stock</button><button type="button" class="btn sec" data-act="count-item" data-id="${it.id}">Count it</button>
         <button type="button" class="btn sec" data-act="report" data-kind="consumable" data-id="${it.id}">Reorder</button>
         <button type="button" class="btn sec" data-act="citem-edit" data-id="${it.id}">Edit</button>`}
       <button type="submit" class="btn">Close</button></div></form>`;
@@ -1042,7 +1042,7 @@ function renderStock() {
   ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th><th></th></tr></thead><tbody>
   ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(whereText(i) || "-")}</td>
     <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}${onOrder("consumable", i.id) ? ` <span class="chip">On order</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td>
-    <td><button class="btn sec" data-act="count-item" data-id="${i.id}">Count</button>${lowItem(i) && !onOrder("consumable", i.id) ? ` <button class="btn sec" data-act="reorder-suggest" data-id="${i.id}">Order</button>` : ""}${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    <td><button class="btn sec" data-act="add-stock" data-id="${i.id}">Add stock</button> <button class="btn sec" data-act="count-item" data-id="${i.id}">Count</button>${lowItem(i) && !onOrder("consumable", i.id) ? ` <button class="btn sec" data-act="reorder-suggest" data-id="${i.id}">Order</button>` : ""}${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty"><p>Nothing matches this filter.</p></div>`}`;
   const sq = $("#stQ"); sq.oninput = () => { state.stockQ = sq.value; const pos = sq.selectionStart; renderStock(); labelTables(); const n = $("#stQ"); n.focus(); n.setSelectionRange(pos, pos); };
 }
@@ -1199,7 +1199,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "44";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "45";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1250,6 +1250,7 @@ async function onMainClick(ev) {
       <button type="button" class="btn" data-act="add" style="text-align:left">A tool<br><small style="font-weight:400">Something you take out and bring back: pliers, a drill</small></button>
       <button type="button" class="btn" data-act="citem-add" style="text-align:left">A consumable<br><small style="font-weight:400">Something that gets used up: screws, tape</small></button>
       <button type="button" class="btn" data-act="asset-add" style="text-align:left">An asset<br><small style="font-weight:400">Equipment you keep track of: a PC, an oscilloscope</small></button></div></div><div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`; if (!d.open) d.showModal(); });
+    else if (a === "add-stock") requireAuth(() => addStockSheet(el.dataset.id));
     else if (a === "take") requireAuth(() => takeSheet(el.dataset.kind, el.dataset.id));
     else if (a === "loan-return") requireAuth(() => returnLoan(el.dataset.loan));
     else if (a === "loc-open") locSheet(el.dataset.id);
@@ -1322,6 +1323,7 @@ function afterLoan() { if (state.loc && unitById(state.loc)) locSheet(state.loc)
 async function returnLoan(id) {
   try { await guard(rpcAuth("toolscale_loan_return", { p_loan: id })); await refreshAll(); toast("Returned. Thank you."); afterLoan(); } catch (e) {}
 }
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const DURS = [["End of today", "eod"], ["4 hours", 4 * 3600e3], ["1 day", 86400e3], ["3 days", 3 * 86400e3], ["1 week", 7 * 86400e3], ["2 weeks", 14 * 86400e3], ["1 month", 30 * 86400e3]];
 function takeSheet(kind, id) {
   const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const d = $("#dlg"), con = kind === "consumable";
@@ -1347,6 +1349,21 @@ function takeSheet(kind, id) {
   $("#tkOtherGo").onclick = () => { const n = Number($("#tk_n").value); if (!(n >= 1)) { $("#tk_n").focus(); return; } go("Borrowed", new Date(Date.now() + n * Number($("#tk_u").value)).toISOString()); };
   $("#tk_n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#tkOtherGo").click(); } };
 }
+/* adding to what is on hand, for example after a delivery */
+function addStockSheet(id) {
+  const it = state.citems.find(x => x.id === id); if (!it) return; const d = $("#dlg"), now = Number(it.count_on_hand) || 0;
+  d.innerHTML = `<form id="asForm" onsubmit="return false"><div class="dlg-h"><h2>Add stock</h2><div style="font-size:14px;opacity:.8">${esc(fullName(it))} · ${esc(whereText(it) || "no place set")}</div></div><div class="dlg-b">
+    <div><div class="hint" style="margin:0 0 6px">How many are you adding? (${now} on hand now)</div><div class="stepq"><button type="button" id="as_m" aria-label="One less">−</button><input id="as_q" type="number" min="1" max="100000" step="1" value="10" aria-label="How many"><button type="button" id="as_p" aria-label="One more">＋</button></div></div>
+    <div class="durs" style="grid-template-columns:repeat(4,1fr)">${[1, 10, 50, 100].map(n => `<button type="button" data-as="${n}">+${n}</button>`).join("")}</div>
+    <p id="as_res" style="margin:0;font-weight:700"></p></div><div class="dlg-f"><button type="button" class="btn sec" id="asBack">Cancel</button><button type="submit" class="btn" id="asGo">Add stock</button></div></form>`;
+  if (!d.open) d.showModal();
+  const q = () => clamp(Math.round(Number($("#as_q").value) || 0), 0, 100000), paint = () => { $("#as_res").textContent = q() ? `${now} + ${q()} = ${now + q()} on hand` : ""; $("#asGo").disabled = !q(); };
+  $("#as_q").oninput = paint; $("#as_m").onclick = () => { $("#as_q").value = Math.max(1, q() - 1); paint(); }; $("#as_p").onclick = () => { $("#as_q").value = q() + 1; paint(); };
+  d.querySelectorAll("[data-as]").forEach(b => b.onclick = () => { $("#as_q").value = q() + Number(b.dataset.as); paint(); }); paint();
+  $("#asBack").onclick = () => { if (state.loc && unitById(state.loc)) locSheet(state.loc); else if (state.sheet) itemSheet(state.sheet.kind, state.sheet.id); else d.close(); };
+  $("#asForm").onsubmit = ev => { ev.preventDefault(); if (!q()) return; requireAuth(async () => { try { const n = await guard(rpcAuth("toolscale_consumable_add", { p_id: id, p_qty: q() })); await refreshAll(); toast(`Added ${q()}. Now ${n} on hand.`); afterLoan(); } catch (e) {} }); };
+  setTimeout(() => { $("#as_q")?.focus(); $("#as_q")?.select(); }, 50);
+}
 /* a place: shelf, cabinet, table or box, with everything in it. This is the page a QR code opens. */
 function placedAt(uid) { return allEntries().filter(x => x.it.unit_id === uid); }
 function locSheet(uid) {
@@ -1354,7 +1371,7 @@ function locSheet(uid) {
   const subs = p => (state.spaceUnits || []).filter(x => x.parent_id === p).sort((a, b) => a.name.localeCompare(b.name));
   const row = x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id), out = x.kind === "tool" && x.it.status === "out" && !l;
     return `<div class="locrow"><div><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(fullName(x.it))}</button><div class="sub">${l ? `<span class="chip out">Out</span> ${esc(l.person)}${whyText(l) ? " · " + esc(whyText(l)) : ""} · ${esc(dueWord(l))}` : out ? `<span class="chip out">Out</span> nobody recorded` : x.kind === "consumable" ? x.it.count_on_hand + " on hand" + (lowItem(x.it) ? " (low)" : "") : `<span class="chip in">Here</span>`}</div></div>
-      ${l ? `<button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button>` : out ? `<button class="btn sec" data-act="flip" data-id="${x.it.id}" data-to="in">Mark in</button>` : `<button class="btn" data-act="take" data-kind="${x.kind}" data-id="${x.it.id}">Take</button>`}</div>`; };
+      <div class="row" style="gap:6px;flex:none">${x.kind === "consumable" ? `<button class="btn sec" data-act="add-stock" data-id="${x.it.id}">Add</button>` : ""}${l ? `<button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button>` : out ? `<button class="btn sec" data-act="flip" data-id="${x.it.id}" data-to="in">Mark in</button>` : `<button class="btn" data-act="take" data-kind="${x.kind}" data-id="${x.it.id}">Take</button>`}</div></div>`; };
   const boxHtml = (b, depth) => `<div class="locbox" style="margin-left:${Math.min(depth, 3) * 10}px"><div class="locbh"><button class="linkname" data-act="loc-open" data-id="${b.id}">▢ ${esc(b.name)}</button></div>${slots(b)}${subs(b.id).map(c => boxHtml(c, depth + 1)).join("")}</div>`;
   const slots = p => {
     const tbl = isTableUnit(p), n = tbl ? 2 : Math.max(1, Number(p.levels) || 1), sections = isBox(p) && n > 1, single = isBox(p) && n === 1;

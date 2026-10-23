@@ -54,6 +54,8 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .subtabs:empty{display:none}
 .subtabs button{background:none;border:1px solid #5C7380;color:#C7D3D8;padding:4px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;font-size:14px}
 .subtabs button[aria-current=page]{background:#fff;border-color:#fff;color:var(--ink);font-weight:600}
+#pgseg:empty{display:none}.pgseg{max-width:1100px;margin:var(--s3) auto 0;padding:0 var(--s4);display:flex;gap:0}.pgseg button{background:#fff;border:2px solid var(--ink);margin-left:-2px;padding:6px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}.pgseg button:first-child{margin-left:0}.pgseg button[aria-selected=true]{background:var(--ink);color:#fff}
+.bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
 .subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
 .linkname{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(127,127,127,.45);text-underline-offset:3px}
 .linkname:hover{text-decoration-color:currentColor}
@@ -261,12 +263,16 @@ const state = {
 /* Pages are grouped by the job you are doing, not by the hardware behind them */
 const SECTIONS = [
   ["home", "Home", [["home", "Overview"]]],
-  ["find", "Find", [["s3d", "Find"]]],
-  ["tools", "Tools", [["board", "Board"], ["loans", "Loans"], ["activity", "Activity"]]],
-  ["stock", "Stock", [["stock", "On hand"], ["count", "Count by weight"], ["detect", "Count by camera"], ["identify", "Identify one"], ["history", "History"]]],
+  ["find", "Find", [["s3d", "Find"], ["splan", "Edit space"]]],
+  ["tools", "Tools", [["board", "Board"], ["activity", "Activity"], ["loans", "Loans", 1]]],
+  ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["identify", "Identify one"], ["history", "History"], ["detect", "Count by camera", 1]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["splan", "Space plan"], ["sitems", "Place items"], ["scale", "Scale"], ["label", "Camera pictures"], ["train", "Camera training"], ["vlog", "Camera log"]]],
+  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Camera"], ["train", "Camera training", 1], ["vlog", "Camera log", 1]]],
 ];
+/* pages that belong together share one nav entry and show a small switch above the page */
+const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["count", "By weight"], ["detect", "By camera"]], [["label", "Pictures"], ["train", "Training"], ["vlog", "Log"]]];
+const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "count", train: "label", vlog: "label", loans: "board" };
+const navKey = t => NAVKEY[t] || t;
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
@@ -427,6 +433,7 @@ function startApp() {
   </div>
   <nav class="tabs" aria-label="Sections">${SECTIONS.map(([k, l]) => `<button class="tab" data-sec="${k}">${icon(k)}<span>${l}</span><span class="bd"></span></button>`).join("")}</nav>
   <nav class="subtabs" id="subnav" aria-label="Pages"></nav></header>
+  <div id="pgseg"></div>
   <main id="main"></main>
   <dialog id="dlg"></dialog>`;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec); setTab(state.lastTab[s[0]] || s[2][0][0]); });
@@ -448,15 +455,12 @@ function paintNav() {
   const sec = sectionOf(state.tab);
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.sec === sec[0]));
   const sub = $("#subnav"); if (!sub) return;
-  const tabs = sec[2]; let h = "";
-  if (tabs.length > 1) tabs.forEach(([k, l]) => {
-    if (sec[0] === "setup" && k === "tools") h += `<span class="grp">Catalogue</span>`;
-    if (sec[0] === "setup" && k === "splan") h += `<span class="grp">Where things live</span>`;
-    if (sec[0] === "setup" && k === "scale") h += `<span class="grp">Devices</span>`;
-    h += `<button data-tab="${k}" ${k === state.tab ? 'aria-current="page"' : ""}>${l}</button>`;
-  });
+  const tabs = sec[2].filter(t => !t[2]); let h = "";
+  if (tabs.length > 1) tabs.forEach(([k, l]) => { h += `<button data-tab="${k}" ${k === navKey(state.tab) ? 'aria-current="page"' : ""}>${l}</button>`; });
   sub.innerHTML = h; sub.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
   sub.querySelector("[aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const sg = $("#pgseg"), seg = PAGESEGS.find(g => g.some(([k]) => k === state.tab));
+  if (sg) { sg.innerHTML = seg ? `<div class="pgseg" role="tablist">${seg.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${k === state.tab}">${l}</button>`).join("")}</div>` : ""; sg.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab)); }
   updateBadge();
 }
 /* The one load cell either tracks tools or counts parts. Opening Count switches it to counting, leaving Count switches it back. */
@@ -467,6 +471,7 @@ function syncScaleMode(prev) {
 }
 function setScaleMode(m) { return rpcAuth("toolscale_set_device_mode", { p_device: SCALES[m] || DEVICE_ID, p_mode: m }).then(() => refreshDevice()).then(() => { if (["count", "board"].includes(state.tab) && !$("#dlg").open) renderTab(); }, () => {}); }
 function setTab(t) {
+  if (t === "loans") t = "board";
   const prev = state.tab; state.tab = t; state.lastTab[sectionOf(t)[0]] = t;
   try { localStorage.setItem("ts_tab", t); } catch (e) {}
   if (prev !== t) state.draftMsg = state.tab === "reorder" ? state.draftMsg : null;
@@ -482,7 +487,7 @@ function renderTab() {
   if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets, loans: renderLoans })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -571,7 +576,7 @@ function resultRows(list) {
   if (!list.length) return `<p class="hint">Nothing matches. Try part of the name, a size like M6, or a shelf name.</p>`;
   return `<ul class="res">${list.slice(0, 12).map(({ kind, it }) => `<li><div class="nm"><button class="linkname" data-act="sheet" data-kind="${kind}" data-id="${it.id}"><strong>${esc(fullName(it))}</strong></button>
     <div class="sub">${kindName(kind)} · ${esc(whereText(it) || "no place set")}</div></div>${statusText(kind, it)}
-    ${it.unit_id ? `<button class="btn sec" data-act="locate" data-kind="${kind}" data-id="${it.id}">Show</button>` : ""}</li>`).join("")}</ul>${list.length > 12 ? `<p class="hint">${list.length - 12} more. Type more of the name to narrow it down.</p>` : ""}`;
+    ${it.unit_id ? `<button class="btn sec" data-act="locate" data-kind="${kind}" data-id="${it.id}">Show</button>` : ""}${takeBtn(kind, it).replace('class="btn"', 'class="btn"')}</li>`).join("")}</ul>${list.length > 12 ? `<p class="hint">${list.length - 12} more. Type more of the name to narrow it down.</p>` : ""}`;
 }
 function attention() {
   const c = [], look = state.events.filter(needsLook), out = state.tools.filter(t => t.status === "out"), late = out.filter(t => t.taken_at && Date.now() - new Date(t.taken_at) > 24 * 3600e3);
@@ -671,10 +676,9 @@ function renderHome() {
     <button data-act="go:s3d">${icon("cube")}Show me where</button>
     <button data-act="go:count">${icon("count")}Count by weight</button>
     <button data-act="go:detect">${icon("camera")}Count by camera</button>
-    <button data-act="go:board">${icon("tools")}Tool board</button>
-    <button data-act="add">${icon("plus")}Add a tool</button>
-    <button data-act="citem-add">${icon("plus")}Add a consumable</button>
-    <button data-act="asset-add">${icon("plus")}Add an asset</button></div></section>
+    <button data-act="go:board">${icon("tools")}Who has what</button>
+    <button data-act="go:splan">${icon("cube")}Edit my space</button>
+    <button data-act="add-any">${icon("plus")}Add an item</button></div></section>
   ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
   <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
   const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? resultRows(searchItems(q.value)) : ""; };
@@ -684,7 +688,7 @@ function renderHome() {
 /* ---------- item card: everything about one tool or consumable, and what you can do with it ---------- */
 function itemSheet(kind, id) { state.sheet = { kind, id }; paintSheet(); const d = $("#dlg"); if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; }; }
 function placeHtml(it, k) {
-  const units = state.spaceUnits || []; if (!units.length) return `<p class="hint">Draw your shelves under Setup, Space plan, to give it a place you can find in 3D.</p>`;
+  const units = state.spaceUnits || []; if (!units.length) return `<p class="hint">Draw your shelves in Find, Edit space, to give it a place you can find in 3D.</p>`;
   const u = units.find(x => x.id === it?.unit_id);
   return `<div class="row"><div class="field"><label for="${k}_unit">Shelf, cabinet or table</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
     <div class="field" style="max-width:120px"><label for="${k}_lvl" id="${k}_lvlL">${slotWord(u)}</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
@@ -709,8 +713,8 @@ function paintSheet() {
   if (!it) { d.close(); return; }
   const ord = onOrder(sh.kind, it.id), where = whereText(it);
   const hist = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
-  const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ...(loanFor("asset", it.id) ? [["Taken by", loanFor("asset", it.id).person + " · " + loanFor("asset", it.id).purpose], ["Return", dueWord(loanFor("asset", it.id))]] : []), ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
-    : tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + " · " + loanFor("tool", it.id).purpose], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
+  const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ...(loanFor("asset", it.id) ? [["Taken by", loanFor("asset", it.id).person + (whyText(loanFor("asset", it.id)) ? " · " + whyText(loanFor("asset", it.id)) : "")], ["Return", dueWord(loanFor("asset", it.id))]] : []), ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
+    : tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
     : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
     <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
@@ -826,9 +830,10 @@ function renderBoard() {
   }
   h += `<div class="summary"><div><h1>${tools.length - out.length} of ${tools.length} tools in</h1>
     <p>${out.length ? "Out now: " + out.map(t => `<strong>${esc(t.name)}</strong> (${ago(t.taken_at)})`).join(", ") + "." : "Everything is back on the board."} Tap a tool for details.</p></div>
-    <button class="btn sec" data-act="go:tools">Manage tools</button></div>
+    <div class="row" style="gap:8px"><button class="btn sec" data-act="qr-all">Print QR labels</button><button class="btn sec" data-act="go:tools">Manage tools</button></div></div>
+  ${loansHtml()}
   <div class="board">${tools.map(t => t.status === "out" ? `
-    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div>${loanFor("tool", t.id) ? `<div class="slot" style="margin-top:4px"><strong>${esc(loanFor("tool", t.id).person)}</strong> · ${esc(loanFor("tool", t.id).purpose)}<br>${esc(dueWord(loanFor("tool", t.id)))}</div>` : ""}</div>
+    <div class="tile out"><div><span class="badge">Out ${esc(ago(t.taken_at))}</span><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div>${loanFor("tool", t.id) ? `<div class="slot" style="margin-top:4px"><strong>${esc(loanFor("tool", t.id).person)}</strong>${whyText(loanFor("tool", t.id)) ? " · " + esc(whyText(loanFor("tool", t.id))) : ""}<br>${esc(dueWord(loanFor("tool", t.id)))}</div>` : ""}</div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="flip" data-id="${t.id}" data-to="in">Mark in</button></div></div>` : `
     <div class="tile"><div><h3><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}">${esc(t.name)}</button></h3><div class="slot">${esc(whereText(t))}</div></div>
       <div class="meta"><span class="w num">${fmtG(t.weight_g, 0)} g</span><button class="flip" data-act="take" data-kind="tool" data-id="${t.id}">Take</button></div></div>`).join("")}</div>
@@ -1194,7 +1199,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "41";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "43";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1241,11 +1246,15 @@ async function onMainClick(ev) {
   try {
     if (a.startsWith("go:")) { if ($("#dlg").open) $("#dlg").close(); setTab(a.slice(3)); }
     else if (a === "sheet") itemSheet(el.dataset.kind, el.dataset.id);
+    else if (a === "add-any") requireAuth(() => { const d = $("#dlg"); d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Add an item</h2></div><div class="dlg-b"><div style="display:grid;gap:10px">
+      <button type="button" class="btn" data-act="add" style="text-align:left">A tool<br><small style="font-weight:400">Something you take out and bring back: pliers, a drill</small></button>
+      <button type="button" class="btn" data-act="citem-add" style="text-align:left">A consumable<br><small style="font-weight:400">Something that gets used up: screws, tape</small></button>
+      <button type="button" class="btn" data-act="asset-add" style="text-align:left">An asset<br><small style="font-weight:400">Equipment you keep track of: a PC, an oscilloscope</small></button></div></div><div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`; if (!d.open) d.showModal(); });
     else if (a === "take") requireAuth(() => takeSheet(el.dataset.kind, el.dataset.id));
     else if (a === "loan-return") requireAuth(() => returnLoan(el.dataset.loan));
     else if (a === "loc-open") locSheet(el.dataset.id);
     else if (a === "qr-one") qrLabels([el.dataset.id]);
-    else if (a === "qr-all") qrLabels(allPlaceIds());
+    else if (a === "qr-all") qrChooser();
     else if (a === "loc-3d") { state.spaceFocusUnit = el.dataset.id; if ($("#dlg").open) $("#dlg").close(); setTab("s3d"); }
     else if (a === "count-item") { state.countItem = el.dataset.id; if ($("#dlg").open) $("#dlg").close(); setTab("count"); }
     else if (a === "stockf") { state.stockF = el.dataset.f; renderStock(); labelTables(); }
@@ -1301,41 +1310,38 @@ const locUrl = id => location.origin + location.pathname + "?loc=" + id;
 const openLoans = () => (state.loans || []).filter(l => !l.returned_at);
 const loanFor = (kind, id) => openLoans().find(l => l.kind === kind && l.item_id === id);
 const isLate = l => !l.returned_at && l.due_at && new Date(l.due_at) < Date.now();
-const dueWord = l => l.returned_at ? "returned " + when(l.returned_at) : !l.due_at ? "no return time set" : (isLate(l) ? "overdue, was due " : "back by ") + when(l.due_at);
+const whyText = l => ["Borrowed", "Kept", "Used"].includes(l.purpose) ? "" : l.purpose;
+const dueWord = l => l.returned_at ? "returned " + when(l.returned_at) : !l.due_at ? (l.purpose === "Kept" ? "keeping it" : "no return time set") : (isLate(l) ? "overdue, was due " : "back by ") + when(l.due_at);
 const takeBtn = (kind, it) => { const l = kind === "consumable" ? null : loanFor(kind, it.id); return l ? `<button type="button" class="btn" data-act="loan-return" data-loan="${l.id}">Return it</button>` : kind === "tool" && it.status === "out" ? "" : `<button type="button" class="btn" data-act="take" data-kind="${kind}" data-id="${it.id}">Take${kind === "consumable" ? " some" : " it"}</button>`; };
+const placeOf = u => {   // where a place is, without its own name
+  const r = roomOfUnit(u); if (!u.parent_id) return r ? r.name : ""; const chain = []; let x = u, n = 0; while (x.parent_id && unitById(x.parent_id) && n++ < 10) { chain.unshift(x); x = unitById(x.parent_id); }
+  return [r && r.name, x.name + (x.kind === "rack" && chain[0] ? " · level " + chain[0].parent_level : ""), ...chain.slice(0, -1).map(c => c.name)].filter(Boolean).join(" · ");
+};
 const allPlaceIds = () => [...(state.spaceUnits || [])].sort((a, b) => unitLabel(a).localeCompare(unitLabel(b))).map(u => u.id);
 function afterLoan() { if (state.loc && unitById(state.loc)) locSheet(state.loc); else if (state.sheet) itemSheet(state.sheet.kind, state.sheet.id); else if ($("#dlg").open) $("#dlg").close(); renderTab(); }
 async function returnLoan(id) {
   try { await guard(rpcAuth("toolscale_loan_return", { p_loan: id })); await refreshAll(); toast("Returned. Thank you."); afterLoan(); } catch (e) {}
 }
-function dueFrom(v, at) {
-  const d = new Date(), eve = (days, h) => { const x = new Date(); x.setDate(x.getDate() + days); x.setHours(h, 0, 0, 0); return x; };
-  if (v === "today") { const x = eve(0, 18); return (x - d < 3600e3 ? new Date(d.getTime() + 2 * 3600e3) : x).toISOString(); }
-  if (v === "tomorrow") return eve(1, 18).toISOString(); if (v === "3d") return eve(3, 18).toISOString(); if (v === "week") return eve(7, 18).toISOString();
-  if (v === "pick" && at) return new Date(at).toISOString(); return null;
-}
+const DURS = [["4 hours", 4 * 3600e3], ["1 day", 86400e3], ["3 days", 3 * 86400e3], ["1 week", 7 * 86400e3], ["2 weeks", 14 * 86400e3], ["1 month", 30 * 86400e3]];
 function takeSheet(kind, id) {
-  const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const d = $("#dlg"), con = kind === "consumable", past = [...new Set((state.loans || []).map(l => l.purpose).filter(Boolean))].slice(0, 8);
+  const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const d = $("#dlg"), con = kind === "consumable";
   if (!con && loanFor(kind, id)) { toast("Already out with " + loanFor(kind, id).person + "."); return; }
-  d.innerHTML = `<form id="takeForm"><div class="dlg-h"><h2>Take ${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${esc(whereText(it) || kindName(kind))} · signed in as ${esc(state.user?.name || "")}</div></div><div class="dlg-b">
-    ${con ? `<div class="field" style="max-width:160px"><label for="tk_q">How many?</label><input id="tk_q" type="number" min="1" max="${Math.max(1, it.count_on_hand)}" step="1" value="1" required><div class="hint">${it.count_on_hand} on hand</div></div>` : ""}
-    <div class="field"><label for="tk_why">What is it for?</label><input id="tk_why" type="text" list="tk_dl" maxlength="80" required placeholder="e.g. Fixing the PC desk, Project X" autocomplete="off"><datalist id="tk_dl">${past.map(p => `<option value="${esc(p)}">`).join("")}</datalist></div>
-    <div class="field"><label for="tk_when">${con ? "Will you bring any back?" : "When will you return it?"}</label><select id="tk_when" class="sel"><option value="">${con ? "No, it will be used up" : "I do not know yet"}</option><option value="today">${con ? "Yes, " : ""}later today</option><option value="tomorrow">${con ? "Yes, " : ""}tomorrow</option><option value="3d">${con ? "Yes, " : ""}in 3 days</option><option value="week">${con ? "Yes, " : ""}next week</option><option value="pick">Pick a date and time…</option></select></div>
-    <div class="field" id="tk_atW" hidden><label for="tk_at">Return by</label><input id="tk_at" type="datetime-local"></div>
-  </div><div class="dlg-f"><button type="button" class="btn sec" id="tkBack">Back</button><button type="submit" class="btn">${con ? "Take them" : "Take it"}</button></div></form>`;
+  d.innerHTML = `<form id="takeForm" onsubmit="return false"><div class="dlg-h"><h2>Take ${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${esc(whereText(it) || kindName(kind))} · signed in as ${esc(state.user?.name || "")}</div></div><div class="dlg-b">
+    ${con ? `<div><div class="hint" style="margin:0 0 6px">How many? (${it.count_on_hand} on hand)</div><div class="stepq"><button type="button" id="tk_m" aria-label="One less">−</button><input id="tk_q" type="number" min="1" max="${Math.max(1, it.count_on_hand)}" step="1" value="1" aria-label="How many"><button type="button" id="tk_p" aria-label="One more">＋</button></div></div>` : ""}
+    <div><div style="font-weight:700;margin-bottom:8px">Will you bring ${con ? "any" : "it"} back?</div>
+      <div class="bigtwo"><button type="button" data-tk="keep">${con ? "No<small>it will be used up</small>" : "No<small>I am keeping it</small>"}</button><button type="button" data-tk="back">Yes<small>I will return ${con ? "what is left" : "it"}</small></button></div></div>
+    <div id="tkDur" hidden><div style="font-weight:700;margin-bottom:8px">Back in how long?</div><div class="durs">${DURS.map(([l], i) => `<button type="button" data-dur="${i}">${l}</button>`).join("")}</div></div>
+  </div><div class="dlg-f"><button type="button" class="btn sec" id="tkBack">Back</button></div></form>`;
   if (!d.open) d.showModal();
-  $("#tk_when").onchange = e => { $("#tk_atW").hidden = e.target.value !== "pick"; if (e.target.value === "pick") $("#tk_at").required = true; else $("#tk_at").required = false; };
+  const q = () => clamp(Math.round(Number($("#tk_q")?.value) || 1), 1, Math.max(1, it.count_on_hand));
+  if (con) { $("#tk_m").onclick = () => $("#tk_q").value = clamp(q() - 1, 1, 9999); $("#tk_p").onclick = () => $("#tk_q").value = clamp(q() + 1, 1, Math.max(1, it.count_on_hand)); }
   $("#tkBack").onclick = () => { if (state.loc && unitById(state.loc)) locSheet(state.loc); else itemSheet(kind, id); };
-  $("#takeForm").onsubmit = ev => {
-    ev.preventDefault(); const why = $("#tk_why").value.trim(); if (!why) return;
-    requireAuth(async () => {
-      try {
-        await guard(rpcAuth("toolscale_loan_take", { p_kind: kind, p_id: id, p_purpose: why, p_due: dueFrom($("#tk_when").value, $("#tk_at").value), p_qty: con ? Number($("#tk_q").value) || 1 : 1 }));
-        await refreshAll(); toast(con ? "Recorded. Stock updated." : "Recorded. Please bring it back on time."); afterLoan();
-      } catch (e) {}
-    });
-  };
-  setTimeout(() => $("#tk_why")?.focus(), 50);
+  const go = (purpose, due) => requireAuth(async () => {
+    try { await guard(rpcAuth("toolscale_loan_take", { p_kind: kind, p_id: id, p_purpose: purpose, p_due: due, p_qty: con ? q() : 1 })); await refreshAll(); toast(due ? "Recorded. Please bring it back on time." : con ? "Recorded. Stock updated." : "Recorded."); afterLoan(); } catch (e) {}
+  });
+  d.querySelector('[data-tk=keep]').onclick = () => go(con ? "Used" : "Kept", null);
+  d.querySelector('[data-tk=back]').onclick = () => { $("#tkDur").hidden = false; d.querySelector('[data-tk=back]').style.background = "var(--ink)"; d.querySelector('[data-tk=back]').style.color = "#fff"; $("#tkDur").scrollIntoView({ block: "nearest" }); };
+  d.querySelectorAll("[data-dur]").forEach(b => b.onclick = () => go("Borrowed", new Date(Date.now() + DURS[Number(b.dataset.dur)][1]).toISOString()));
 }
 /* a place: shelf, cabinet, table or box, with everything in it. This is the page a QR code opens. */
 function placedAt(uid) { return allEntries().filter(x => x.it.unit_id === uid); }
@@ -1343,7 +1349,7 @@ function locSheet(uid) {
   const u = unitById(uid), d = $("#dlg"); if (!u) { toast("That place is not in the system."); return; } state.loc = uid; state.sheet = null;
   const subs = p => (state.spaceUnits || []).filter(x => x.parent_id === p).sort((a, b) => a.name.localeCompare(b.name));
   const row = x => { const l = x.kind === "consumable" ? null : loanFor(x.kind, x.it.id), out = x.kind === "tool" && x.it.status === "out" && !l;
-    return `<div class="locrow"><div><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(fullName(x.it))}</button><div class="sub">${l ? `<span class="chip out">Out</span> ${esc(l.person)} · ${esc(l.purpose)} · ${esc(dueWord(l))}` : out ? `<span class="chip out">Out</span> nobody recorded` : x.kind === "consumable" ? x.it.count_on_hand + " on hand" + (lowItem(x.it) ? " (low)" : "") : `<span class="chip in">Here</span>`}</div></div>
+    return `<div class="locrow"><div><button class="linkname" data-act="sheet" data-kind="${x.kind}" data-id="${x.it.id}">${esc(fullName(x.it))}</button><div class="sub">${l ? `<span class="chip out">Out</span> ${esc(l.person)}${whyText(l) ? " · " + esc(whyText(l)) : ""} · ${esc(dueWord(l))}` : out ? `<span class="chip out">Out</span> nobody recorded` : x.kind === "consumable" ? x.it.count_on_hand + " on hand" + (lowItem(x.it) ? " (low)" : "") : `<span class="chip in">Here</span>`}</div></div>
       ${l ? `<button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button>` : out ? `<button class="btn sec" data-act="flip" data-id="${x.it.id}" data-to="in">Mark in</button>` : `<button class="btn" data-act="take" data-kind="${x.kind}" data-id="${x.it.id}">Take</button>`}</div>`; };
   const boxHtml = (b, depth) => `<div class="locbox" style="margin-left:${Math.min(depth, 3) * 10}px"><div class="locbh"><button class="linkname" data-act="loc-open" data-id="${b.id}">▢ ${esc(b.name)}</button></div>${slots(b)}${subs(b.id).map(c => boxHtml(c, depth + 1)).join("")}</div>`;
   const slots = p => {
@@ -1355,9 +1361,9 @@ function locSheet(uid) {
   };
   const body = isBox(u) && !(Number(u.levels) > 1) ? slots(u) + subs(u.id).map(c => boxHtml(c, 0)).join("") : slots(u) + (isBox(u) ? subs(u.id).map(c => boxHtml(c, 0)).join("") : "");
   const out = openLoans().filter(l => { const x = allEntries().find(e => e.kind === l.kind && e.it.id === l.item_id); const holder = x && x.it.unit_id; let p = holder && unitById(holder), n = 0; while (p && n++ < 10) { if (p.id === uid) return true; p = p.parent_id && unitById(p.parent_id); } return false; });
-  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${esc(unitLabel(u))}</div></div><div class="dlg-b">
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${esc(placeOf(u))}</div></div><div class="dlg-b">
     ${out.length ? `<div class="banner info" style="margin:0"><span>${out.length} item${out.length > 1 ? "s" : ""} from here taken out: ${out.map(l => esc(l.item_name) + " (" + esc(l.person) + ")").join(", ")}.</span></div>` : ""}
-    ${body}<p class="hint" style="margin:0">Tap Take, say what it is for and when it comes back. You need to be signed in.</p></div>
+    ${body}<p class="hint" style="margin:0">Tap Take on an item to record it. You need to be signed in.</p></div>
     <div class="dlg-f"><button type="button" class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button><button type="button" class="btn sec" data-act="loc-3d" data-id="${u.id}">Show in 3D</button><button type="submit" class="btn">Close</button></div></form>`;
   if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; try { if (new URLSearchParams(location.search).get("loc")) history.replaceState(null, "", location.pathname); } catch (e) {} };
 }
@@ -1369,12 +1375,26 @@ function openDeepLink() {
 let qrLib = null;
 function loadQr() { return qrLib || (qrLib = new Promise((res, rej) => { if (window.qrcode) return res(window.qrcode); const el = document.createElement("script"); el.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"; el.onload = () => res(window.qrcode); el.onerror = () => { qrLib = null; rej(new Error("Could not load the QR code maker. Check your connection and try again.")); }; document.head.appendChild(el); })); }
 const qrSvg = (qr, text) => { const q = qr(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); };
+/* pick which rooms to print labels for */
+function qrChooser() {
+  const units = state.spaceUnits || [], rooms = state.spaceRooms || []; if (!units.length) { toast("Draw your shelves in the space plan first, then each gets a QR label."); return; }
+  const groups = [...rooms.map(r => ({ id: r.id, name: r.name })), { id: "", name: "Not in a room" }].map(g => ({ ...g, us: units.filter(u => (roomOfUnit(u)?.id || "") === g.id) })).filter(g => g.us.length);
+  const d = $("#dlg"); state.sheet = null; state.loc = null;
+  d.innerHTML = `<form id="qrPick"><div class="dlg-h"><h2>Print QR labels</h2></div><div class="dlg-b"><p style="margin:0">Which rooms do you want labels for?</p>
+    <div style="display:grid;gap:8px">${groups.map(g => `<label style="display:flex;gap:10px;align-items:center;border:2px solid var(--ink);padding:10px 12px;cursor:pointer;margin:0;font-weight:600"><input type="checkbox" class="qrRoom" value="${esc(g.id)}" checked style="width:20px;height:20px"><span style="flex:1">${esc(g.name)}</span><span class="hint" style="margin:0;font-weight:400">${g.us.length} place${g.us.length > 1 ? "s" : ""}</span></label>`).join("")}</div>
+    <label style="display:flex;gap:10px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="qrBoxes" checked style="width:20px;height:20px"> Include boxes</label></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="qrNone">Clear</button><button type="button" class="btn sec" id="qrEvery">Select all</button><button type="submit" class="btn" id="qrGo">Make labels</button></div></form>`;
+  if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; };
+  const boxes = () => [...d.querySelectorAll(".qrRoom")], count = () => { const sel = boxes().filter(b => b.checked).map(b => b.value), n = groups.filter(g => sel.includes(g.id)).reduce((a, g) => a + g.us.filter(u => $("#qrBoxes").checked || !isBox(u)).length, 0); $("#qrGo").textContent = n ? "Make " + n + " label" + (n > 1 ? "s" : "") : "Make labels"; $("#qrGo").disabled = !n; };
+  d.querySelectorAll("input").forEach(i => i.onchange = count); $("#qrNone").onclick = () => { boxes().forEach(b => b.checked = false); count(); }; $("#qrEvery").onclick = () => { boxes().forEach(b => b.checked = true); count(); }; count();
+  $("#qrPick").onsubmit = ev => { ev.preventDefault(); const sel = boxes().filter(b => b.checked).map(b => b.value), inc = $("#qrBoxes").checked; qrLabels(groups.filter(g => sel.includes(g.id)).flatMap(g => g.us.filter(u => inc || !isBox(u)).sort((a, b) => placeOf(a).localeCompare(placeOf(b)) || a.name.localeCompare(b.name))).map(u => u.id)); };
+}
 async function qrLabels(ids) {
   let qr; try { qr = await loadQr(); } catch (e) { toast(e.message); return; }
   const us = ids.map(unitById).filter(Boolean); if (!us.length) { toast("Draw your shelves in the space plan first, then each gets a QR label."); return; }
-  const lab = u => `<div class="qrl"><div class="qrc">${qrSvg(qr, locUrl(u.id))}</div><div class="qrt"><strong>${esc(u.name)}</strong><span>${esc(unitLabel(u))}</span><em>Scan to see what is here, and to take something</em></div></div>`;
+  const lab = u => `<div class="qrl"><div class="qrc">${qrSvg(qr, locUrl(u.id))}</div><div class="qrt"><strong>${esc(u.name)}</strong><span>${esc(placeOf(u))}</span></div></div>`;
   const d = $("#dlg"); state.sheet = null; state.loc = null;
-  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>QR label${us.length > 1 ? "s" : ""} (${us.length})</h2></div><div class="dlg-b"><p style="margin:0">Print these and stick one on each place. Scanning opens that place's page with what is inside, and you can take things from there.</p><div class="qrgrid">${us.map(lab).join("")}</div></div>
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>QR label${us.length > 1 ? "s" : ""} (${us.length})</h2></div><div class="dlg-b"><p style="margin:0">Print and stick one on each place. Scanning it opens a page with what is inside.</p><div class="qrgrid">${us.map(lab).join("")}</div></div>
     <div class="dlg-f"><button type="button" class="btn" id="qrPrint">Print</button><button type="submit" class="btn sec">Close</button></div></form>`;
   if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; };
   $("#qrPrint").onclick = () => {
@@ -1382,13 +1402,12 @@ async function qrLabels(ids) {
     const done = () => { document.body.classList.remove("printing"); ps.remove(); removeEventListener("afterprint", done); }; addEventListener("afterprint", done); setTimeout(() => print(), 60);
   };
 }
-function renderLoans() {
-  const all = state.loans || [], ol = openLoans(), late = ol.filter(isLate), done = all.filter(l => l.returned_at && !(l.kind === "consumable" && !l.due_at)).slice(0, 12), used = all.filter(l => l.kind === "consumable" && !l.due_at).slice(0, 12);
+function loansHtml() {
+  const all = state.loans || [], ol = openLoans(), late = ol.filter(isLate), done = all.filter(l => l.returned_at && !(l.kind === "consumable" && !l.due_at)), used = all.filter(l => l.kind === "consumable" && !l.due_at);
   const place = l => { const x = allEntries().find(e => e.kind === l.kind && e.it.id === l.item_id); return x ? whereText(x.it) || "no place set" : "-"; };
-  $("#main").innerHTML = `<div class="summary"><div><h1>${ol.length ? ol.length + " item" + (ol.length > 1 ? "s" : "") + " taken out" : "Nothing is out on loan"}</h1><p>${late.length ? `<strong>${late.length} overdue.</strong> ` : ""}Anyone signed in can take something from a place and say what it is for and when it comes back. Scan a place's QR code to start.</p></div>
-    <button class="btn sec" data-act="qr-all">Print QR labels</button></div>
-  ${ol.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Who</th><th>What for</th><th>Taken</th><th>Return</th><th>From</th><th></th></tr></thead><tbody>${ol.map(l => `<tr class="${isLate(l) ? "late" : ""}"><td><strong>${esc(l.item_name)}</strong>${l.kind === "consumable" ? `<div class="hint">${l.qty} taken</div>` : ""}</td><td>${esc(l.person)}</td><td>${esc(l.purpose)}</td><td>${esc(when(l.taken_at))}</td><td>${isLate(l) ? `<span class="chip warn">${esc(dueWord(l))}</span>` : esc(dueWord(l))}</td><td>${esc(place(l))}</td><td><button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Everything is in its place.</p></div>`}
-  ${done.length || used.length ? `<section class="block"><h2>Recent</h2><ul class="log">${[...done.map(l => [l.returned_at, `${l.item_name} returned by ${l.person}`, `Taken ${when(l.taken_at)} for ${l.purpose}`]), ...used.map(l => [l.taken_at, `${l.qty} × ${l.item_name} used by ${l.person}`, l.purpose])].sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 15).map(([ts, t, n]) => `<li><div class="t">${esc(when(ts))}</div><div><div class="what">${esc(t)}</div><div class="note">${esc(n)}</div></div></li>`).join("")}</ul></section>` : ""}`;
+  const recent = [...done.map(l => [l.returned_at, `${l.item_name} returned by ${l.person}`, `Taken ${when(l.taken_at)}`]), ...used.map(l => [l.taken_at, `${l.qty} × ${l.item_name} used by ${l.person}`, ""])].sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 12);
+  return `${ol.length ? `<section class="block"><h2>Taken out (${ol.length})${late.length ? ` · <span style="color:var(--alert)">${late.length} overdue</span>` : ""}</h2><div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Who</th><th>Taken</th><th>Return</th><th>From</th><th></th></tr></thead><tbody>${ol.map(l => `<tr class="${isLate(l) ? "late" : ""}"><td><strong>${esc(l.item_name)}</strong>${l.kind === "consumable" ? `<div class="hint">${l.qty} taken</div>` : ""}</td><td>${esc(l.person)}</td><td>${esc(when(l.taken_at))}</td><td>${isLate(l) ? `<span class="chip warn">${esc(dueWord(l))}</span>` : esc(dueWord(l))}</td><td>${esc(place(l))}</td><td><button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button></td></tr>`).join("")}</tbody></table></div></section>` : ""}
+  ${recent.length ? `<details class="block"><summary style="cursor:pointer;font-weight:700">Recently returned or used</summary><ul class="log" style="margin-top:8px">${recent.map(([ts, t, n]) => `<li><div class="t">${esc(when(ts))}</div><div><div class="what">${esc(t)}</div>${n ? `<div class="note">${esc(n)}</div>` : ""}</div></li>`).join("")}</ul></details>` : ""}`;
 }
 
 boot();

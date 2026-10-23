@@ -265,13 +265,13 @@ const SECTIONS = [
   ["home", "Home", [["home", "Overview"]]],
   ["find", "Find", [["s3d", "Find"], ["splan", "Edit space"]]],
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"], ["loans", "Loans", 1]]],
-  ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["identify", "Identify one"], ["history", "History"], ["detect", "Count by camera", 1]]],
+  ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["history", "History"], ["detect", "Count by camera", 1]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Camera"], ["train", "Camera training", 1], ["vlog", "Camera log", 1]]],
+  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Camera"]]],
 ];
 /* pages that belong together share one nav entry and show a small switch above the page */
-const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["count", "By weight"], ["detect", "By camera"]], [["label", "Pictures"], ["train", "Training"], ["vlog", "Log"]]];
-const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "count", train: "label", vlog: "label", loans: "board" };
+const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["count", "By weight"], ["detect", "By camera"]]];
+const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "count", loans: "board" };
 const navKey = t => NAVKEY[t] || t;
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
@@ -484,10 +484,9 @@ function labelTables() {
   });
 }
 function renderTab() {
-  if (window.VisionUI && !["identify", "train", "vlog"].includes(state.tab)) VisionUI.stop();
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, identify: renderIdentify, train: renderTrain, vlog: renderVlog, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -527,7 +526,7 @@ async function refreshAll() {
       state.seenEventId = top;
     }
     if (state.tab === "scale") await refreshWeightEvents();
-    if (changed && !state.teach && state.tab !== "scale" && !["identify", "train", "detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel")) && !$("#dlg").open && !/^(q|stQ)$/.test(document.activeElement?.id || "")) renderTab();
+    if (changed && !state.teach && state.tab !== "scale" && !["detect", "label", "splan", "s3d", "sitems"].includes(state.tab) && !(state.tab === "count" && $("#cntSel")) && !$("#dlg").open && !/^(q|stQ)$/.test(document.activeElement?.id || "")) renderTab();
     else if (changed && $("#sheetForm")) paintSheet();
     document.title = (state.tools.filter(t => t.status === "out").length ? `(${state.tools.filter(t => t.status === "out").length} out) ` : "") + "Inventory Space";
   } catch (e) { /* banner already shown */ }
@@ -1197,24 +1196,9 @@ function reportDialog(kind, item) {
   };
 }
 
-/* ---------- vision (webcam) ---------- */
+/* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "45";   // bump when vision.js changes so browsers do not keep an old copy
-let visionLoading = null;
-function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
-  if (window.VisionUI) return Promise.resolve();
-  visionLoading = visionLoading || (async () => {
-    if (!window.tf) { try { await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } catch (e) { await loadScript("https://unpkg.com/@tensorflow/tfjs@4.22.0/dist/tf.min.js"); } }
-    await loadScript("vision.js?v=" + VISION_V);
-  })().catch(e => { visionLoading = null; throw e; });
-  return visionLoading;
-}
-async function visionPage(fn) {
-  const tab = state.tab;   // a slow or failed load must not touch a different tab the user has moved to
-  $("#main").innerHTML = `<div class="empty"><p>Loading camera tools...</p></div>`;
-  try { await ensureVision(); if (state.tab !== tab) return; window.VisionUI[fn](); }
-  catch (e) { if (state.tab !== tab) return; $("#main").innerHTML = `<div class="banner"><span>Could not load the camera tools: ${esc(e.message || e)}</span></div>`; }
-}
+const VISION_V = "46";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1223,7 +1207,6 @@ async function detectPage(fn) {
   try { await ensureDetect(); if (state.tab !== tab) return; window.DetectUI[fn](); }
   catch (e) { if (state.tab !== tab) return; $("#main").innerHTML = `<div class="banner"><span>Could not load this page: ${esc(e.message || e)}</span></div>`; }
 }
-const renderIdentify = () => visionPage("identify"), renderTrain = () => visionPage("train"), renderVlog = () => visionPage("vlog");
 const renderDetect = () => detectPage("detect"), renderLabel = () => detectPage("label");
 let spaceLoading = null;
 function ensureSpace() { if (window.SpaceUI) return Promise.resolve(); spaceLoading = spaceLoading || loadScript("space.js?v=" + VISION_V).catch(e => { spaceLoading = null; throw e; }); return spaceLoading; }

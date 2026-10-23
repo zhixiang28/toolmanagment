@@ -17,7 +17,7 @@
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
   const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
-  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null };
+  const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
   const num = o => { const r = { ...o }; ["w", "d", "h", "x", "z", "rot", "levels"].forEach(k => { if (k in r) r[k] = Number(r[k]); }); r.elev = Number(r.elev || 0); r.parent_level = r.parent_level == null ? null : Number(r.parent_level); if (Array.isArray(r.points)) r.points = r.points.map(p => [Number(p[0]), Number(p[1])]); return r; };
   const fp = u => { const sw = u.rot % 180 !== 0; return { x: u.x, z: u.z, w: sw ? u.d : u.w, d: sw ? u.w : u.d }; };
@@ -112,25 +112,71 @@
     const cv = $("#sCv"); if (!cv) return; const b = bounds(), pad = 1, w = b.x1 - b.x0 + 2 * pad, h = b.z1 - b.z0 + 2 * pad;
     const ppm = Math.min(cv.width / Math.max(w, 6), cv.height / Math.max(h, 4)); S.v = { ppm, ox: b.x0 - pad - (cv.width / ppm - w) / 2, oz: b.z0 - pad - (cv.height / ppm - h) / 2 };
   }
+  /* the page's own styles, added once */
+  function ensureStyle() {
+    if (document.getElementById("spStyle")) return; const st = document.createElement("style"); st.id = "spStyle";
+    st.textContent = `.sptool{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);padding:8px 10px;margin-bottom:12px}
+.sptool .grow{flex:1}.sptool .btn{min-height:38px;padding:4px 12px}
+.seg{display:inline-flex;border:2px solid var(--ink);background:#fff;max-width:100%;overflow-x:auto;scrollbar-width:none}
+@media(max-width:560px){.seg button{padding:6px 8px;font-size:14px}.sptool{gap:8px}}
+.seg button{border:0;background:#fff;padding:6px 12px;cursor:pointer;font-weight:600;min-height:36px;white-space:nowrap}
+.seg button+button{border-left:2px solid var(--ink)}
+.seg .sm{display:none}
+@media(max-width:560px){.seg .lg{display:none}.seg .sm{display:inline}.vwh .hint{white-space:nowrap}}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.addm{position:relative}.addm>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--hivis);border:2px solid var(--ink);padding:4px 14px;min-height:38px;font-weight:700}
+.addm>summary::-webkit-details-marker{display:none}
+.addp{position:absolute;z-index:8;top:calc(100% + 6px);left:0;background:#fff;border:2px solid var(--ink);padding:8px;display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:6px;box-shadow:0 8px 24px rgba(20,35,43,.25)}
+.addp button{display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--panel);padding:8px 10px;cursor:pointer;font-weight:600}
+.addp button:hover{border-color:var(--ink)}.addp i{width:22px;height:16px;flex:none;border:1px solid #14232B}
+.spcol{display:grid;gap:12px;min-width:0;align-content:start}
+.vw{padding:0;overflow:hidden}
+.vwh{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vwh strong{font:600 20px var(--display)}.vwh .seg button{padding:3px 10px;min-height:30px;font-size:14px}
+.vw canvas{width:100%;display:block;touch-action:none;background:#EEF1F2}.vw .hint{margin:0;padding:6px 12px}
+.spprops{align-self:start}
+@media(min-width:761px){.spprops{position:sticky;top:176px;max-height:calc(100vh - 192px);overflow:auto}}
+details.acc{border-top:1px solid var(--line)}
+details.acc>summary{cursor:pointer;font:600 19px var(--display);padding:8px 0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::after{content:"\\25BE";font-size:14px;color:var(--ink-2)}
+details.acc:not([open])>summary::after{content:"\\25B8"}
+.accb{padding:0 0 12px}
+.chipk{display:inline-block;font-size:12px;font-weight:600;background:var(--ink);color:#fff;padding:1px 8px;margin-left:6px;vertical-align:middle}
+.nudge{display:grid;grid-template-columns:repeat(3,42px);gap:4px}
+.nudge button,.nbtn{min-height:40px;border:2px solid var(--ink);background:#fff;cursor:pointer;font-weight:700;padding:0 8px}
+.nudge button:active,.nbtn:active{background:var(--hivis)}
+.sw{width:26px;height:26px;border:1px solid #14232B;cursor:pointer;padding:0}.mini{width:38px;padding:0;min-height:42px}
+.bxr{display:flex;gap:6px;align-items:center;justify-content:space-between;border:1px solid var(--line);background:#fff;padding:4px 8px;margin:3px 0;font-size:14px;cursor:pointer;width:100%;text-align:left}.bxr.over{border-color:var(--alert)}`;
+    document.head.appendChild(st);
+  }
   async function plan() {
-    stop(); const me = S.view = {};
-    $("#main").innerHTML = `<div class="summary"><div><h1>Space plan</h1><p>Draw your space from above. Make each room (any shape), add shelves and cabinets, then drag them into place. Select one to change its size, height, levels and colour.</p></div></div>
-      <div class="row" id="sBar" style="margin-bottom:10px"></div>
-      <div class="split"><div class="panel" style="padding:8px"><canvas id="sCv" style="width:100%;display:block;touch-action:none;background:var(--panel);cursor:default"></canvas><p class="hint" id="sHint" style="margin:6px 4px 0"></p></div><div class="panel" id="sProps"></div></div>`;
+    stop(); ensureStyle(); const me = S.view = {};
+    $("#main").innerHTML = `<div class="summary"><div><h1>Space plan</h1><p>Draw rooms from above, then place shelves, cabinets, desks and racks. Drag in the <strong>top view</strong> to move along the floor, and in the <strong>front view</strong> to move sideways and up or down.</p></div></div>
+      <div class="sptool" id="sBar"></div>
+      <div class="split"><div class="spcol">
+        <div class="panel vw"><div class="vwh"><strong>Top view</strong><span class="hint" style="margin:0;padding:0" id="sInfo"></span></div><canvas id="sCv"></canvas><p class="hint" id="sHint"></p></div>
+        <div class="panel vw"><div class="vwh"><strong>Front view</strong><span style="display:flex;gap:8px;align-items:center"><span class="hint" style="margin:0;padding:0">Seen from</span><span class="seg" id="eSeg" role="group" aria-label="Which side to look from"></span></span></div><canvas id="eCv"></canvas><p class="hint" id="eHint"></p></div></div>
+        <div class="panel spprops" id="sProps"></div></div>`;
     try { await load(); } catch (e) { return; } if (S.view !== me) return;
-    sizeCanvas(); fitView(); paintBar(); paintProps(); draw(); bindCanvas(); window.onresize = () => { if (S.view === me) { sizeCanvas(); draw(); } };
+    sizeCanvas(); fitView(); fitFront(); paintBar(); paintSeg(); paintProps(); draw(); bindCanvas(); bindFront();
+    window.onresize = () => { if (S.view === me) { sizeCanvas(); fitFront(); draw(); } };
     S.keys = onKey; document.addEventListener("keydown", S.keys);
   }
-  function sizeCanvas() { const cv = $("#sCv"); if (!cv) return; const w = Math.max(280, cv.parentElement.clientWidth - 16); cv.width = w; cv.height = Math.round(clamp(w * 0.68, 320, 560)); }
+  function sizeCanvas() {
+    const cv = $("#sCv"), ev = $("#eCv"); if (!cv || !ev) return; const w = Math.max(280, cv.parentElement.clientWidth);
+    cv.width = ev.width = w; cv.height = Math.round(clamp(w * 0.54, 280, 440)); ev.height = Math.round(clamp(w * 0.36, 210, 270));
+  }
   function paintBar() {
-    const el = $("#sBar"); if (!el) return; const t = S.tool, B = (id, label, on) => `<button class="btn ${on ? "" : "sec"}" data-tool="${id}">${label}</button>`;
-    el.innerHTML = B("select", "Select / move", t === "select") + B("rect", "Room: rectangle", t === "rect") + B("poly", "Room: corners", t === "poly") + `<span class="hint" style="margin:0 4px">Add:</span>` + Object.entries(ADD_LABEL).map(([k, l]) => `<button class="btn sec" data-add="${k}">${l}</button>`).join("")
-      + `<span style="flex:1"></span><button class="btn sec" id="sUndo" title="Undo (Ctrl+Z)" ${S.undo.length ? "" : "disabled"}>Undo</button><button class="btn sec" id="zOut" aria-label="Zoom out">−</button><button class="btn sec" id="zIn" aria-label="Zoom in">+</button><button class="btn sec" id="zFit">Fit</button>`
-      + (t === "poly" ? `<span class="row" style="width:100%;margin-top:4px"><button class="btn" id="pFin" ${S.draft.length >= 3 ? "" : "disabled"}>Finish room</button><button class="btn sec" id="pUndo" ${S.draft.length ? "" : "disabled"}>Undo corner</button><button class="btn sec" id="pCancel">Cancel</button></span>` : "");
+    const el = $("#sBar"); if (!el) return; const t = S.tool, T = (id, label) => `<button data-tool="${id}" aria-pressed="${t === id}">${label}</button>`;
+    el.innerHTML = `<span class="seg" role="group" aria-label="Tool">${T("select", "<span class=\"lg\">Select / move</span><span class=\"sm\">Select</span>")}${T("rect", "<span class=\"lg\">Room: rectangle</span><span class=\"sm\">Rect room</span>")}${T("poly", "<span class=\"lg\">Room: corners</span><span class=\"sm\">Corner room</span>")}</span>
+      <details class="addm" id="addm"><summary>＋ Add</summary><div class="addp">${Object.entries(ADD_LABEL).map(([k, l]) => { const kd = KINDS[(ADDS[k] || {}).kind || k]; return `<button type="button" data-add="${k}"><i style="background:${kd.fill}"></i>${l}</button>`; }).join("")}</div></details>
+      <span class="grow"></span><button class="btn sec" id="sUndo" title="Undo (Ctrl+Z)" ${S.undo.length ? "" : "disabled"}>↶ Undo</button><span class="seg"><button id="zOut" aria-label="Zoom out">−</button><button id="zIn" aria-label="Zoom in">＋</button><button id="zFit">Fit</button></span>
+      ${t === "poly" ? `<span class="row" style="width:100%"><button class="btn" id="pFin" ${S.draft.length >= 3 ? "" : "disabled"}>Finish room</button><button class="btn sec" id="pUndo" ${S.draft.length ? "" : "disabled"}>Undo corner</button><button class="btn sec" id="pCancel">Cancel</button></span>` : ""}`;
     el.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => { S.tool = b.dataset.tool; S.draft = []; S.rect = null; S.hover = null; paintBar(); draw(); });
-    el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => requireAuth(() => addUnit(b.dataset.add)));
+    el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => { $("#addm").open = false; requireAuth(() => addUnit(b.dataset.add)); });
     const zoom = f => { const cv = $("#sCv"), cx = S.v.ox + cv.width / 2 / S.v.ppm, cz = S.v.oz + cv.height / 2 / S.v.ppm; S.v.ppm = clamp(S.v.ppm * f, 8, 400); S.v.ox = cx - cv.width / 2 / S.v.ppm; S.v.oz = cz - cv.height / 2 / S.v.ppm; draw(); };
-    $("#zIn").onclick = () => zoom(1.25); $("#zOut").onclick = () => zoom(0.8); $("#zFit").onclick = () => { fitView(); draw(); }; $("#sUndo").onclick = () => requireAuth(undo);
+    $("#zIn").onclick = () => zoom(1.25); $("#zOut").onclick = () => zoom(0.8); $("#zFit").onclick = () => { fitView(); fitFront(); draw(); }; $("#sUndo").onclick = () => requireAuth(undo);
     const fin = $("#pFin"); if (fin) fin.onclick = finishPoly; const un = $("#pUndo"); if (un) un.onclick = () => { S.draft.pop(); paintBar(); draw(); }; const ca = $("#pCancel"); if (ca) ca.onclick = () => { S.draft = []; S.tool = "select"; paintBar(); draw(); };
   }
   async function addUnit(key, from) {
@@ -215,6 +261,7 @@
     g.lineWidth = 3; g.strokeStyle = "#F2C200"; g.fillStyle = "rgba(242,194,0,.2)";
     if (S.rect) { const x = Math.min(S.rect.x0, S.rect.x1), z = Math.min(S.rect.z0, S.rect.z1), w = Math.abs(S.rect.x1 - S.rect.x0), d = Math.abs(S.rect.z1 - S.rect.z0); g.fillRect(sx(x), sy(z), w * p, d * p); g.strokeRect(sx(x), sy(z), w * p, d * p); dimLabel(g, r2(w) + " m", sx(x + w / 2), sy(z) - 12, false); dimLabel(g, r2(d) + " m", sx(x + w) + 12, sy(z + d / 2), true); }
     if (S.draft.length) { g.beginPath(); S.draft.forEach((q, i) => i ? g.lineTo(sx(q[0]), sy(q[1])) : g.moveTo(sx(q[0]), sy(q[1]))); if (S.hover) g.lineTo(sx(S.hover[0]), sy(S.hover[1])); g.stroke(); S.draft.forEach((q, i) => { g.fillStyle = i === 0 ? "#2E7D4F" : "#F2C200"; g.beginPath(); g.arc(sx(q[0]), sy(q[1]), i === 0 ? 7 : 5, 0, 7); g.fill(); }); edgeLengths(g, S.hover ? [...S.draft, S.hover] : S.draft, false); }
+    drawFront(); paintInfo();
     const hint = $("#sHint"); if (hint) hint.textContent = S.tool === "rect" ? "Drag from one corner of the room to the opposite corner." : S.tool === "poly" ? "Click each corner of the room in order. Click the green first corner (or Finish room) to close it." : !state.user ? "Sign in (top right) to change things. You can still look around and pick things."
       : selUnit ? "Drag to move. Drag the yellow handles to resize. Keys: arrows nudge 5 cm (Shift 50 cm), R turns, Ctrl+D copies, Delete removes, Ctrl+Z undoes." : "Click a shelf, cabinet or room to edit it. Drag the empty background to move the view; scroll or pinch to zoom.";
   }
@@ -294,6 +341,134 @@
     };
     cv.onwheel = e => { e.preventDefault(); const w = pt(e), f = e.deltaY < 0 ? 1.12 : 0.89; S.v.ppm = clamp(S.v.ppm * f, 8, 400); S.v.ox = w.x - w.px / S.v.ppm; S.v.oz = w.z - w.py / S.v.ppm; draw(); };
   }
+  /* ====================================================== Front view (side-on) ======================================================
+     The same space seen from one edge of the plan. Across is the floor line, up is height, so dragging here moves a unit sideways and up or down. */
+  const VIEWS = { S: { label: "Bottom", arrow: "↑", axis: "x", sign: 1, looking: "up" }, N: { label: "Top", arrow: "↓", axis: "x", sign: -1, looking: "down" }, W: { label: "Left", arrow: "→", axis: "z", sign: 1, looking: "right" }, E: { label: "Right", arrow: "←", axis: "z", sign: -1, looking: "left" } };
+  const EV = () => VIEWS[S.eview] || VIEWS.S;
+  const aext = f => EV().axis === "x" ? [f.x, f.x + f.w] : [f.z, f.z + f.d];                  // a footprint's span along the way we are looking across, in plan metres
+  const hext = (a0, a1) => EV().sign > 0 ? [a0, a1] : [-a1, -a0];                              // the same span as it runs left to right on screen
+  const esx = h => (h - S.ev.h0) * S.ev.ppm, esy = y => S.ev.base - y * S.ev.ppm;
+  function edepth(u) { const f = fp(u), xc = f.x + f.w / 2, zc = f.z + f.d / 2; return { S: zc, N: -zc, W: -xc, E: xc }[S.eview]; }   // bigger is nearer to you
+  function boxSpan(e) { const V = EV(); return V.axis === "x" ? [e.cx - e.wx / 2, e.cx + e.wx / 2] : [e.cz - e.wz / 2, e.cz + e.wz / 2]; }
+  function fitFront() {
+    const cv = $("#eCv"); if (!cv) return; const V = EV(); let hmin = 1e9, hmax = -1e9, ymax = 0;
+    const add = (a0, a1) => { const h = hext(a0, a1); hmin = Math.min(hmin, h[0]); hmax = Math.max(hmax, h[1]); };
+    S.rooms.forEach(r => { const as = r.points.map(q => V.axis === "x" ? q[0] : q[1]); add(Math.min(...as), Math.max(...as)); ymax = Math.max(ymax, r.h); });
+    tops().forEach(u => { const e = aext(fp(u)); add(e[0], e[1]); ymax = Math.max(ymax, (u.elev || 0) + u.h); });
+    if (hmin > hmax) { hmin = 0; hmax = 6; ymax = 2.6; }
+    const ppm = Math.min((cv.width - 30) / (hmax - hmin + 0.6), (cv.height - 46) / (ymax + 0.2)); S.ev = { ppm, h0: (hmin + hmax) / 2 - cv.width / 2 / ppm, base: cv.height - 24 };
+  }
+  function paintSeg() {
+    const el = $("#eSeg"); if (!el) return; const V = EV();
+    el.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button data-view="${k}" aria-pressed="${S.eview === k}" title="Stand at the ${v.label.toLowerCase()} of the plan, looking ${v.looking}">${v.label} ${v.arrow}</button>`).join("");
+    el.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.eview = b.dataset.view; try { localStorage.setItem("sp_view", S.eview); } catch (e) {} paintSeg(); fitFront(); drawFront(); });
+    const h = $("#eHint"); if (h) h.textContent = "Seen from the " + V.label.toLowerCase() + " of the plan, looking " + V.looking + ". " + (state.user ? "Drag a unit sideways or up and down. Drag the yellow dots to resize. Drag empty space to pan; scroll to zoom." : "Sign in (top right) to change things.");
+  }
+  function ehandles(u) {
+    const V = EV(), e = aext(fp(u)), hh = hext(e[0], e[1]), L = esx(hh[0]), R = esx(hh[1]), xm = (L + R) / 2, yT = esy((u.elev || 0) + u.h), yB = esy(u.elev || 0), ym = (yT + yB) / 2;
+    const hs = [["min", V.sign > 0 ? L : R, ym], ["max", V.sign > 0 ? R : L, ym], ["t", xm, yT]]; if (!isTable(u) && u.kind !== "rack") hs.push(["b", xm, yB]); return hs;
+  }
+  function drawElev(g, u, sel) {
+    const E = S.ev, f = fp(u), e = aext(f), hh = hext(e[0], e[1]), x = esx(hh[0]), w = (hh[1] - hh[0]) * E.ppm, yT = esy((u.elev || 0) + u.h), yB = esy(u.elev || 0), col = colorOf(u), lt = light(col), ink = lt ? "#14232B" : "#fff";
+    g.lineWidth = 1.5; g.strokeStyle = "#14232B"; g.textBaseline = "middle";
+    if (isTable(u)) {
+      const bench = u.kind === "bench", t = Math.max(5, (bench ? 0.05 : 0.035) * E.ppm), lw = Math.max(5, (bench ? 0.07 : 0.05) * E.ppm); g.fillStyle = col; g.fillRect(x, yT, w, t); g.strokeRect(x, yT, w, t);
+      g.fillRect(x + 3, yT + t, lw, yB - yT - t); g.fillRect(x + w - 3 - lw, yT + t, lw, yB - yT - t); g.strokeRect(x + 3, yT + t, lw, yB - yT - t); g.strokeRect(x + w - 3 - lw, yT + t, lw, yB - yT - t);
+    } else if (u.kind === "rack") {
+      const L = u.levels, lh = (yB - yT) / L, T = Math.max(3, 0.03 * E.ppm); g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x, yT, w, yB - yT); g.fillStyle = col;
+      for (let i = 0; i <= L; i++) g.fillRect(x, i === L ? yT : yB - lh * i - T, w, T); g.fillRect(x, yT, 4, yB - yT); g.fillRect(x + w - 4, yT, 4, yB - yT);
+      for (const b of boxLayout(u)) { const s = boxSpan(b), bh = hext(s[0], s[1]), bx = esx(bh[0]), bw = (bh[1] - bh[0]) * E.ppm, by = esy(b.y + b.h), bhei = b.h * E.ppm, sb = S.sel && S.sel.id === b.b.id; g.fillStyle = colorOf(b.b); g.fillRect(bx, by, bw, bhei); g.strokeStyle = sb ? "#F2C200" : b.over ? "#B83A26" : "#14232B"; g.lineWidth = sb ? 3 : 1; g.strokeRect(bx, by, bw, bhei); if (bw > 30) { g.save(); g.beginPath(); g.rect(bx, by, bw, bhei); g.clip(); g.fillStyle = light(colorOf(b.b)) ? "#14232B" : "#fff"; g.font = "600 10px sans-serif"; g.textAlign = "left"; g.fillText(b.b.name, bx + 3, by + bhei / 2); g.restore(); } }
+      g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x, yT, w, yB - yT); g.fillStyle = "#14232B"; g.font = "600 10px sans-serif"; g.textAlign = "left"; for (let i = 0; i < L; i++) if (lh > 14) g.fillText(String(i + 1), x + 6, yB - lh * (i + 0.5));
+    } else {
+      g.globalAlpha = .96; g.fillStyle = col; g.fillRect(x, yT, w, yB - yT); g.globalAlpha = 1; g.strokeRect(x, yT, w, yB - yT);
+      const L = u.kind === "bench" || u.kind === "box" ? 1 : u.levels; g.strokeStyle = lt ? "rgba(20,35,43,.55)" : "rgba(255,255,255,.75)"; g.fillStyle = ink; g.font = "600 10px sans-serif"; g.lineWidth = 1;
+      for (let i = 0; i < L; i++) {
+        const yb2 = yB - (yB - yT) * i / L, yt2 = yB - (yB - yT) * (i + 1) / L; if (i) { g.beginPath(); g.moveTo(x + 2, yb2); g.lineTo(x + w - 2, yb2); g.stroke(); }
+        if (L > 1 && (yb2 - yt2) > 14) { g.textAlign = "left"; g.fillText(String(i + 1), x + 5, (yb2 + yt2) / 2); const n = itemsAt(u.id, i + 1).length; if (n && w > 40) { g.textAlign = "right"; g.fillText(w > 90 ? n + " item" + (n > 1 ? "s" : "") : String(n), x + w - 5, (yb2 + yt2) / 2); } }
+      }
+    }
+    if (w > 46) { g.save(); g.beginPath(); g.rect(x + 2, yT - 1, w - 4, 40); g.clip(); g.fillStyle = isTable(u) || u.kind === "rack" ? "#14232B" : ink; g.font = "600 11px sans-serif"; g.textAlign = "left"; g.textBaseline = "top"; g.fillText(u.name, x + 5, isTable(u) ? yT + 7 : yT + 4); g.restore(); }
+    if (sel) {
+      g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.setLineDash([]); g.strokeRect(x - 1, yT - 1, w + 2, yB - yT + 2);
+      dimLabel(g, cm(e[1] - e[0]) + " cm", x + w / 2, yT - 14, false); dimLabel(g, cm(u.h) + " cm", x + w + 16, (yT + yB) / 2, true);
+      if (u.elev > 0 && !isTable(u)) dimLabel(g, "↑ " + cm(u.elev) + " cm", x + w / 2, yB + 14, false);
+      if (state.user) ehandles(u).forEach(([k, hx, hy]) => { g.fillStyle = "#F2C200"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.beginPath(); if (k === "t" || k === "b") g.rect(hx - 7, hy - 7, 14, 14); else g.arc(hx, hy, 7, 0, 7); g.fill(); g.stroke(); });
+    }
+  }
+  function drawFront() {
+    const cv = $("#eCv"); if (!cv || !S.ev) return; const g = cv.getContext("2d"), E = S.ev, V = EV(), W = cv.width, H = cv.height;
+    g.clearRect(0, 0, W, H); g.fillStyle = "#EEF1F2"; g.fillRect(0, 0, W, H); g.font = "11px sans-serif"; g.textAlign = "left"; g.textBaseline = "top"; g.lineWidth = 1;
+    const step = E.ppm > 50 ? 1 : E.ppm > 25 ? 2 : 5, hl = E.h0, hr = E.h0 + W / E.ppm;
+    for (let h = Math.ceil(hl / step) * step; h <= hr; h += step) { g.strokeStyle = "#DDE4E7"; g.beginPath(); g.moveTo(esx(h), 0); g.lineTo(esx(h), H); g.stroke(); g.fillStyle = "#5B6B73"; g.fillText((V.sign * h || 0) + " m", esx(h) + 2, 2); }
+    for (let y = 1; esy(y) > 12; y++) { g.strokeStyle = "#DDE4E7"; g.beginPath(); g.moveTo(0, esy(y)); g.lineTo(W, esy(y)); g.stroke(); g.fillStyle = "#5B6B73"; g.fillText(y + " m", 2, esy(y) + 2); }
+    for (const r of S.rooms) {
+      const as = r.points.map(q => V.axis === "x" ? q[0] : q[1]), hh = hext(Math.min(...as), Math.max(...as)), x = esx(hh[0]), w = (hh[1] - hh[0]) * E.ppm;
+      g.fillStyle = "rgba(255,255,255,.75)"; g.fillRect(x, esy(r.h), w, r.h * E.ppm); g.strokeStyle = "#14232B"; g.lineWidth = 2; g.strokeRect(x, esy(r.h), w, r.h * E.ppm);
+      g.fillStyle = "rgba(20,35,43,.5)"; g.font = "600 12px sans-serif"; g.textAlign = "left"; g.textBaseline = "top"; g.fillText(r.name + " · walls " + r.h + " m", x + 6, esy(r.h) + 4); g.font = "11px sans-serif";
+    }
+    g.fillStyle = "#C9D2D6"; g.fillRect(0, E.base, W, H - E.base); g.fillStyle = "#14232B"; g.fillRect(0, E.base, W, 3);
+    const order = tops().sort((a, b) => edepth(a) - edepth(b)); let selU = null;
+    for (const u of order) { const sel = S.sel && S.sel.kind === "unit" && S.sel.id === u.id; if (sel) selU = u; if (!sel) drawElev(g, u, false); }
+    if (selU) drawElev(g, selU, true);
+    if (S.sel && S.sel.kind === "unit" && parentOf(unit(S.sel.id) || {})) { const b = unit(S.sel.id), p = parentOf(b), e = boxLayout(p).find(x => x.b.id === b.id); if (e) { const s = boxSpan(e), bh = hext(s[0], s[1]); g.strokeStyle = "#F2C200"; g.lineWidth = 3; g.strokeRect(esx(bh[0]) - 1, esy(e.y + e.h) - 1, (bh[1] - bh[0]) * E.ppm + 2, e.h * E.ppm + 2); } }
+    if (S.eg) { g.save(); g.strokeStyle = "#D9822B"; g.lineWidth = 1; g.setLineDash([6, 4]); S.eg.h.forEach(h => { g.beginPath(); g.moveTo(esx(h), 0); g.lineTo(esx(h), H); g.stroke(); }); S.eg.y.forEach(y => { g.beginPath(); g.moveTo(0, esy(y)); g.lineTo(W, esy(y)); g.stroke(); }); g.restore(); }
+  }
+  function snapAxisLines(skipId) { const V = EV(), out = []; tops().forEach(o => { if (o.id === skipId) return; const e = aext(fp(o)); out.push(e[0], e[1]); }); S.rooms.forEach(r => r.points.forEach(q => out.push(V.axis === "x" ? q[0] : q[1]))); return out; }
+  function snapYLines(skipId) { const out = [0]; tops().forEach(o => { if (o.id === skipId) return; out.push(o.elev || 0, (o.elev || 0) + o.h); }); S.rooms.forEach(r => out.push(r.h)); return out; }
+  function snapV(v, list, out, thr) { let best = null; list.forEach(c => { if (Math.abs(c - v) < thr && (best == null || Math.abs(c - v) < Math.abs(best - v))) best = c; }); if (best != null) out.push(best); return best; }
+  function bindFront() {
+    const cv = $("#eCv"); if (!cv) return; const E = () => S.ev, V = () => EV();
+    const pt = e => { const b = cv.getBoundingClientRect(), k = cv.width / b.width, px = (e.clientX - b.left) * k, py = (e.clientY - b.top) * k; return { px, py, h: px / E().ppm + E().h0, y: (E().base - py) / E().ppm }; };
+    const hitsE = w => {
+      const out = [];
+      for (const r of tops().filter(u => u.kind === "rack")) for (const b of boxLayout(r)) { const s = boxSpan(b), hh = hext(s[0], s[1]); if (w.h >= hh[0] && w.h <= hh[1] && w.y >= b.y && w.y <= b.y + b.h) out.push(b.b); }
+      return [...out, ...tops().filter(u => { const hh = hext(...aext(fp(u))); return w.h >= hh[0] && w.h <= hh[1] && w.y >= (u.elev || 0) && w.y <= (u.elev || 0) + u.h; }).sort((a, b) => edepth(b) - edepth(a))];
+    };
+    const hitHandle = (w, touch) => { const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null; if (!u || !state.user || parentOf(u)) return null; const hit = ehandles(u).find(([, hx, hy]) => Math.hypot(hx - w.px, hy - w.py) < (touch ? 16 : 10)); return hit ? { u, edge: hit[0] } : null; };
+    const needSignIn = () => { if (!state.user) { toast("Sign in to change things."); return true; } return false; };
+    cv.onpointerdown = e => {
+      const w = pt(e); cv.setPointerCapture(e.pointerId);
+      const hh = hitHandle(w, e.pointerType === "touch"); if (hh) { flushSave(); S.drag = { kind: "eresize", id: hh.u.id, edge: hh.edge, f0: fp(hh.u), orig: { ...hh.u }, moved: false }; return; }
+      const hits = hitsE(w), u = hits.find(h => S.sel && S.sel.id === h.id) || hits[0];
+      if (u) {
+        const was = !!(S.sel && S.sel.id === u.id); if (!was) { flushSave(); S.sel = { kind: "unit", id: u.id }; paintProps(); } draw();
+        if (parentOf(u) || needSignIn()) { S.drag = { kind: "tap", hits: hits.map(h => h.id), was }; return; }
+        const e0 = aext(fp(u)); S.drag = { kind: "emove", id: u.id, a: V().sign * w.h, a0: e0[0], ext: e0[1] - e0[0], y: w.y, e0: u.elev || 0, canLift: !isTable(u) && u.kind !== "rack", orig: { ...u }, moved: false, hits: hits.map(h => h.id), was }; return;
+      }
+      flushSave(); S.sel = null; paintProps(); draw(); S.drag = { kind: "epan", px: w.px, py: w.py, h0: E().h0, base: E().base };
+    };
+    cv.onpointermove = e => {
+      const w = pt(e), d = S.drag, Ev = E(); if (!d) { const hh = hitHandle(w); cv.style.cursor = !hh ? "default" : hh.edge === "min" || hh.edge === "max" ? "ew-resize" : "ns-resize"; return; }
+      if (d.kind === "epan") { Ev.h0 = d.h0 - (w.px - d.px) / Ev.ppm; Ev.base = d.base + (w.py - d.py); drawFront(); return; }
+      const u = unit(d.id); if (!u) return; const thr = 8 / Ev.ppm, gh = [], gy = [], a = V().sign * w.h, alt = e.altKey, x = V().axis === "x";
+      if (d.kind === "emove") {
+        const lines = snapAxisLines(u.id); let a0 = snapTo(d.a0 + (a - d.a), 0.05);
+        if (!alt) { const s1 = snapV(a0, lines, gh, thr); if (s1 != null) a0 = s1; else { const s2 = snapV(a0 + d.ext, lines, gh, thr); if (s2 != null) a0 = s2 - d.ext; } }
+        if (x) u.x = r2(a0); else u.z = r2(a0);
+        if (d.canLift) { let e0 = Math.max(0, snapTo(d.e0 + (w.y - d.y), 0.05)); if (!alt) { const yl = snapYLines(u.id), s1 = snapV(e0, yl, gy, thr); if (s1 != null) e0 = s1; else { const s2 = snapV(e0 + u.h, yl, gy, thr); if (s2 != null) e0 = Math.max(0, s2 - u.h); } } u.elev = r2(e0); }
+        if (Math.abs(a0 - d.a0) > 0.001 || (d.canLift && Math.abs((u.elev || 0) - d.e0) > 0.001)) d.moved = true;
+      } else if (d.kind === "eresize") {
+        const F = { ...d.f0 }, ed = d.edge;
+        if (ed === "min" || ed === "max") {
+          let v = snapTo(a, 0.05); if (!alt) { const s = snapV(v, snapAxisLines(u.id), gh, thr); if (s != null) v = s; }
+          if (x) { if (ed === "min") { const nx = Math.min(v, F.x + F.w - 0.1); F.w = F.x + F.w - nx; F.x = nx; } else F.w = Math.max(0.1, v - F.x); }
+          else { if (ed === "min") { const nz = Math.min(v, F.z + F.d - 0.1); F.d = F.z + F.d - nz; F.z = nz; } else F.d = Math.max(0.1, v - F.z); }
+          setFootprint(u, F);
+        } else if (ed === "t") { let y = snapTo(w.y, 0.05); if (!alt) { const s = snapV(y, snapYLines(u.id), gy, thr); if (s != null) y = s; } u.h = Math.max(0.1, r2(y - (u.elev || 0))); }
+        else if (ed === "b") { const top = d.orig.elev + d.orig.h; let y = clamp(snapTo(w.y, 0.05), 0, top - 0.1); if (!alt) { const s = snapV(y, snapYLines(u.id), gy, thr); if (s != null) y = clamp(s, 0, top - 0.1); } u.elev = r2(y); u.h = r2(top - y); }
+        d.moved = true;
+      }
+      S.eg = { h: gh.map(v => V().sign * v), y: gy }; draw(); paintSizeInputs(u);
+    };
+    const up = async e => {
+      S.eg = null; const d = S.drag; S.drag = null; if (!d) { draw(); return; }
+      if ((d.kind === "tap" || (d.kind === "emove" && !d.moved)) && d.was && d.hits.length > 1) { const nxt = d.hits[(d.hits.indexOf(S.sel.id) + 1) % d.hits.length]; S.sel = { kind: "unit", id: nxt }; paintProps(); draw(); return; }   // click the same spot again to pick what is behind
+      if ((d.kind === "emove" || d.kind === "eresize") && d.moved) { const u = unit(d.id); snapUnit(d.orig); try { await saveUnit(u); paintProps(); } catch (err) { Object.assign(u, d.orig); S.undo.pop(); paintUndo(); } }
+      draw();
+    };
+    cv.onpointerup = up; cv.onpointercancel = up;
+    cv.onwheel = e => { e.preventDefault(); const w = pt(e), Ev = E(), f = e.deltaY < 0 ? 1.12 : 0.89; Ev.ppm = clamp(Ev.ppm * f, 10, 400); Ev.h0 = w.h - w.px / Ev.ppm; Ev.base = w.py + w.y * Ev.ppm; drawFront(); };
+  }
   function onKey(e) {
     if (!S.view || $("#dlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const ctrl = e.ctrlKey || e.metaKey, u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
@@ -303,6 +478,7 @@
     if (parentOf(u)) { if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); } return; }
     const step = e.shiftKey ? 0.5 : 0.05, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
     if (mv) { e.preventDefault(); burstSnap(u); u.x = r2(u.x + mv[0]); u.z = r2(u.z + mv[1]); draw(); paintPos(u); scheduleSave(u); return; }
+    if ((e.key === "PageUp" || e.key === "PageDown") && !isTable(u) && u.kind !== "rack") { e.preventDefault(); burstSnap(u); u.elev = Math.max(0, r2((u.elev || 0) + (e.key === "PageUp" ? 1 : -1) * step)); draw(); paintSizeInputs(u); scheduleSave(u); return; }
     if (e.key.toLowerCase() === "r" && !ctrl) { e.preventDefault(); turn(u, 90); return; }
     if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); addUnit(u.kind, u); return; }
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); }
@@ -325,87 +501,73 @@
   function finishPoly() {
     if (S.draft.length < 3) return; const pts = S.draft.slice(); S.draft = []; S.hover = null; roomDialog(null, pts);
   }
-  /* front view of the selected unit: real height, levels numbered from the floor, boxes on a rack, and the gap under a wall-mounted unit */
-  function paintFront(u) {
-    const c = $("#uFront"); if (!c || !u) return; const W = c.width = c.clientWidth || 260, H = c.height = 170, g = c.getContext("2d"), pad = 22, tot = (u.elev || 0) + u.h;
-    g.clearRect(0, 0, W, H); const k = Math.min((W - pad * 2 - 30) / Math.max(u.w, 0.1), (H - pad * 2) / Math.max(tot, 0.1)), bw = u.w * k, bh = u.h * k, ge = (u.elev || 0) * k, x0 = pad + 26 + (W - pad * 2 - 30 - bw) / 2, y1 = H - pad, yb = y1 - ge, y0 = yb - bh, col = colorOf(u), lt = light(col);
-    g.fillStyle = "#C2CBD0"; g.fillRect(0, y1, W, 2);
-    const ink = lt ? "#14232B" : "#fff"; g.textBaseline = "middle";
-    if (ge > 4) { g.strokeStyle = "#8A99A0"; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x0 + bw / 2, yb); g.lineTo(x0 + bw / 2, y1); g.stroke(); g.setLineDash([]); g.fillStyle = "#47585F"; g.font = "11px sans-serif"; g.textAlign = "left"; g.fillText(cm(u.elev) + " cm up", x0 + bw / 2 + 6, (yb + y1) / 2); }
-    if (isTable(u)) {
-      const t = Math.max(5, (u.kind === "bench" ? 0.05 : 0.035) * k), lw = Math.max(5, 0.05 * k); g.fillStyle = col; g.fillRect(x0, y0, bw, t); g.fillRect(x0 + 3, y0 + t, lw, bh - t); g.fillRect(x0 + bw - 3 - lw, y0 + t, lw, bh - t); g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x0, y0, bw, t);
-    } else if (u.kind === "rack") {
-      const L = u.levels, lh = bh / L, T = Math.max(3, 0.03 * k); g.strokeStyle = "#14232B"; g.lineWidth = 1.2;
-      g.fillStyle = col; for (let i = 0; i <= L; i++) g.fillRect(x0, i === L ? y0 : yb - lh * i - T, bw, T); g.fillRect(x0, y0, 4, bh); g.fillRect(x0 + bw - 4, y0, 4, bh);
-      g.font = "600 10px sans-serif"; g.fillStyle = "#14232B"; g.textAlign = "left"; for (let i = 0; i < L; i++) if (lh > 12) g.fillText(String(i + 1), x0 + 7, yb - lh * (i + 0.5));
-      for (const e of boxLayout(u)) { const bx = x0 + e.left * k, bwid = e.b.w * k, bhei = e.b.h * k, by = yb - ((e.L - 1) * u.h / L + 0.03) * k - bhei; g.fillStyle = colorOf(e.b); g.fillRect(bx, by, bwid, bhei); g.strokeStyle = e.over ? "#B83A26" : "#14232B"; g.lineWidth = e.over ? 2 : 1; g.strokeRect(bx, by, bwid, bhei); if (bwid > 26) { g.save(); g.beginPath(); g.rect(bx, by, bwid, bhei); g.clip(); g.fillStyle = light(colorOf(e.b)) ? "#14232B" : "#fff"; g.font = "600 9px sans-serif"; g.textAlign = "left"; g.fillText(e.b.name, bx + 3, by + bhei / 2); g.restore(); } }
-    } else {
-      g.fillStyle = col; g.fillRect(x0, y0, bw, bh); g.strokeStyle = "#14232B"; g.lineWidth = 1.5; g.strokeRect(x0, y0, bw, bh);
-      g.strokeStyle = lt ? "rgba(20,35,43,.6)" : "rgba(255,255,255,.75)"; g.fillStyle = ink; g.font = "600 11px sans-serif";
-      const L = u.kind === "bench" ? 1 : u.levels;
-      for (let i = 0; i < L; i++) {
-        const yb2 = yb - bh * i / L, yt = yb - bh * (i + 1) / L; if (i) { g.beginPath(); g.moveTo(x0 + 2, yb2); g.lineTo(x0 + bw - 2, yb2); g.stroke(); }
-        if (bh / L > 12) { g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, (yb2 + yt) / 2); const n = itemsAt(u.id, i + 1).length; if (n) { g.textAlign = "right"; g.fillText(bw > 90 ? n + " item" + (n > 1 ? "s" : "") : String(n), x0 + bw - 5, (yb2 + yt) / 2); } }
-      }
-    }
-    g.fillStyle = "#14232B"; g.textAlign = "center"; g.font = "600 11px sans-serif"; g.fillText(cm(u.w) + " cm wide", x0 + bw / 2, y0 - 9);
-    g.save(); g.translate(x0 - 14, (y0 + yb) / 2); g.rotate(-Math.PI / 2); g.fillText(cm(u.h) + (isTable(u) ? " cm table top" : " cm high"), 0, 0); g.restore();
-  }
-  function paintSizeInputs(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uW", cm(u.w)); s("uD", cm(u.d)); s("uH", cm(u.h)); paintFront(u); paintPos(u); }
+  function paintSizeInputs(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uW", cm(u.w)); s("uD", cm(u.d)); s("uH", cm(u.h)); s("uE", cm(u.elev || 0)); paintPos(u); paintInfo(); }
   function paintPos(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uX", r2(u.x)); s("uZ", r2(u.z)); }
+  function paintInfo() {
+    const el = $("#sInfo"); if (!el) return; const u = S.sel && S.sel.kind === "unit" ? unit(S.sel.id) : null;
+    el.textContent = u ? u.name + " · " + cm(u.w) + " × " + cm(u.d) + " × " + cm(u.h) + " cm" + (u.elev > 0 ? " · " + cm(u.elev) + " cm up" : "") : S.rooms.length + " room" + (S.rooms.length === 1 ? "" : "s") + ", " + tops().length + " unit" + (tops().length === 1 ? "" : "s");
+  }
   const SIZES_BOX = [[40, 30, 25], [60, 40, 30], [30, 20, 15], [25, 25, 25]];
   const swatches = col => SWATCH.map(c => `<button type="button" class="sw" data-col="${c}" title="${c}" aria-label="Colour ${c}" style="background:${c};${c.toUpperCase() === col.toUpperCase() ? "outline:3px solid var(--hivis);outline-offset:1px" : ""}"></button>`).join("");
-  const PSTYLE = `<style>.sw{width:26px;height:26px;border:1px solid #14232B;cursor:pointer;padding:0}.pgrp{border:0;border-top:1px solid var(--line);padding:10px 0 0;margin:10px 0 0}.pgrp legend{font:600 18px var(--display);padding:0 6px 0 0}.mini{width:38px;padding:0;min-height:42px}.bxr{display:flex;gap:6px;align-items:center;justify-content:space-between;border:1px solid var(--line);background:#fff;padding:4px 8px;margin:3px 0;font-size:14px;cursor:pointer;width:100%;text-align:left}.bxr.over{border-color:var(--alert)}</style>`;
+  /* collapsible panel sections that remember whether you left them open */
+  const sec = (key, title, html, dflt = true) => `<details class="acc" data-k="${key}" ${(S.open[key] ?? dflt) ? "open" : ""}><summary>${title}</summary><div class="accb">${html}</div></details>`;
+  const bindSecs = el => el.querySelectorAll("details.acc").forEach(d => d.addEventListener("toggle", () => { S.open[d.dataset.k] = d.open; }));
+  function nudge(u, dx, dz, de) {
+    const step = (Number($("#nStep")?.value) || 5) / 100; burstSnap(u);
+    if (dx || dz) { u.x = r2(u.x + dx * step); u.z = r2(u.z + dz * step); } if (de && !isTable(u) && u.kind !== "rack") u.elev = Math.max(0, r2((u.elev || 0) + de * step));
+    draw(); paintSizeInputs(u); scheduleSave(u);
+  }
   function paintProps() {
-    const el = $("#sProps"); if (!el) return; const s = S.sel;
+    const el = $("#sProps"); if (!el) return; const s = S.sel; paintInfo();
     if (s && s.kind === "room") {
       const r = room(s.id); if (!r) return; const inside = tops().filter(u => roomOf(u) === r);
-      el.innerHTML = `<h2>${esc(r.name)}</h2><p>${r2(area(r.points))} m², ${r.points.length} corners, walls ${r.h} m high.</p><p class="hint">${inside.length} unit${inside.length === 1 ? "" : "s"} inside. Drag a corner to reshape the room. Double-click a wall to add a corner, or a corner to remove it. Wall lengths are shown on the plan.</p>
+      el.innerHTML = `<h2>${esc(r.name)} <span class="chipk">Room</span></h2><p class="hint">${r2(area(r.points))} m² · ${r.points.length} corners · walls ${r.h} m high · ${inside.length} unit${inside.length === 1 ? "" : "s"} inside</p>
+        <p>Drag a corner on the top view to reshape the room. Double-click a wall to add a corner, or a corner to remove it. Wall lengths show on the plan.</p>
         <div class="row" style="margin-top:10px"><button class="btn sec" id="rEdit">Rename or change height</button><button class="btn danger" id="rDel">Remove room</button></div>`;
       $("#rEdit").onclick = () => requireAuth(() => roomDialog(r));
-      $("#rDel").onclick = () => requireAuth(async () => { if (!confirm("Remove " + r.name + "? The shelves and cabinets stay where they are.")) return; try { await guard(rpcAuth("toolscale_space_remove", { p_kind: "room", p_id: r.id })); S.sel = null; S.undo = S.undo.filter(x => x.id !== r.id); await load(); await refreshAll(); paintBar(); paintProps(); draw(); } catch (e) {} });
+      $("#rDel").onclick = () => requireAuth(async () => { if (!confirm("Remove " + r.name + "? The shelves and cabinets stay where they are.")) return; try { await guard(rpcAuth("toolscale_space_remove", { p_kind: "room", p_id: r.id })); S.sel = null; S.undo = S.undo.filter(x => x.id !== r.id); await load(); await refreshAll(); paintBar(); paintProps(); fitFront(); draw(); } catch (e) {} });
       return;
     }
     const u = s && s.kind === "unit" ? unit(s.id) : null;
-    if (!u) { el.innerHTML = `<h2>Your space</h2><p>${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"}, ${tops().length} unit${tops().length === 1 ? "" : "s"}.</p><p class="hint">Use <strong>Room: rectangle</strong> or <strong>Room: corners</strong> to draw a room. Use the <strong>Add</strong> buttons for shelves, cabinets, wall cabinets, a PC desk or a rack. Click one to change its size, height, levels and colour. Click the same spot again to pick what is underneath, such as a cabinet under a desk.</p>`; return; }
+    if (!u) { el.innerHTML = `<h2>Your space</h2><p class="hint">${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"} · ${tops().length} unit${tops().length === 1 ? "" : "s"}</p>
+      <ol style="padding-left:20px;display:grid;gap:6px;margin:0 0 10px"><li>Draw a room with <strong>Room: rectangle</strong> or <strong>Room: corners</strong>.</li><li>Press <strong>＋ Add</strong> for a shelf, cabinet, wall cabinet, drawers, workbench, PC desk or rack.</li><li>Drag it in the <strong>top view</strong> to place it on the floor, and in the <strong>front view</strong> to set how high it is.</li></ol>
+      <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>`; return; }
     if (u.kind === "box" && parentOf(u)) return boxProps(u, el);
     const its = contents(u), rm = roomOf(u), col = colorOf(u), ro = !state.user, desk = isTable(u), rack = u.kind === "rack";
     const types = Object.entries(KINDS).filter(([k]) => k !== "box").map(([k, v]) => `<option value="${k}" ${k === u.kind ? "selected" : ""}>${v.label}</option>`).join("");
-    el.innerHTML = PSTYLE + `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
+    const clash = clashes(u), lift = !desk && !rack;
+    const sizeHtml = `<div class="row"><div class="field" style="min-width:70px"><label for="uW">Width (cm)</label><input id="uW" type="number" step="5" min="10" max="3000" value="${cm(u.w)}"></div>
+        <div class="field" style="min-width:70px"><label for="uD">Depth (cm)</label><input id="uD" type="number" step="5" min="10" max="3000" value="${cm(u.d)}"></div>
+        <div class="field" style="min-width:70px"><label for="uH">${desk ? "Top height" : "Height"} (cm)</label><input id="uH" type="number" step="5" min="10" max="1000" value="${cm(u.h)}"></div></div>
+      <div style="margin-top:8px"><label for="uPre">Common sizes</label><select id="uPre" class="sel"><option value="">Pick a size...</option>${(PRESETS[u.kind] || []).map(p => `<option value="${p.join(",")}">${p[0]} × ${p[1]} × ${p[2]} cm</option>`).join("")}</select></div>
+      <p class="hint">Width is across the front. You can also drag the yellow dots in either view.</p>`;
+    const levelsHtml = `<div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div>`;
+    const posHtml = `<div class="row"><div class="field" style="min-width:70px"><label for="uX">Left edge (m)</label><input id="uX" type="number" step="0.05" value="${r2(u.x)}"></div><div class="field" style="min-width:70px"><label for="uZ">Top edge (m)</label><input id="uZ" type="number" step="0.05" value="${r2(u.z)}"></div>
+        ${lift ? `<div class="field" style="min-width:90px"><label for="uE">Off the floor (cm)</label><input id="uE" type="number" step="5" min="0" max="500" value="${cm(u.elev)}"></div>` : ""}</div>
+      <div class="row" style="align-items:center;gap:16px;margin-top:10px"><div class="nudge" role="group" aria-label="Nudge on the floor plan"><span></span><button type="button" data-n="0,-1,0" aria-label="Up on the plan">▲</button><span></span><button type="button" data-n="-1,0,0" aria-label="Left">◀</button><span></span><button type="button" data-n="1,0,0" aria-label="Right">▶</button><span></span><button type="button" data-n="0,1,0" aria-label="Down on the plan">▼</button><span></span></div>
+        <div style="display:grid;gap:4px">${lift ? `<button type="button" class="nbtn" data-n="0,0,1">⤒ Raise</button><button type="button" class="nbtn" data-n="0,0,-1">⤓ Lower</button>` : ""}<select id="nStep" class="sel" aria-label="Nudge step"><option value="1">1 cm</option><option value="5" selected>5 cm</option><option value="10">10 cm</option><option value="50">50 cm</option></select></div></div>
+      <div style="margin-top:12px"><label>Front faces (white edge on the plan)</label>
+        <div class="row" style="gap:6px;align-items:center" role="group" aria-label="Which side is the front">${[["up", "↑ Up"], ["left", "← Left"], ["down", "↓ Down"], ["right", "→ Right"]].map(([d, l]) => `<button type="button" class="btn ${facing(u.rot) === d ? "" : "sec"}" data-front="${d}" aria-pressed="${facing(u.rot) === d}" style="padding:6px 10px">${l}</button>`).join("")}</div></div>
+      <div class="row" style="margin-top:10px;align-items:center"><button type="button" class="btn sec" id="uRotL" aria-label="Turn left">↺ Turn</button><button type="button" class="btn sec" id="uRot" aria-label="Turn right">Turn ↻</button><button type="button" class="btn sec" id="uWall">Snap to wall</button>${lift ? `<button type="button" class="btn sec" id="uMount">Mount on wall</button>` : ""}</div>
+      <p class="hint">Snap to wall puts the back against the nearest straight wall.${lift ? " Mount on wall also lifts it 120 cm." : ""} Turn rotates the whole unit; picking a front side keeps the shape in place.</p>`;
+    const underCab = !desk && !rack && u.elev > 0 ? sec("undercab", "Under this cabinet", `<p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
+        <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div>`) : "";
+    const underDesk = desk ? sec("underdesk", "Under the " + (u.kind === "bench" ? "bench" : "desk"), `<p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button>`) : "";
+    const boxesHtml = rack ? sec("boxes", "Boxes on this rack", `${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}"><span>${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it under Setup, Place items.</p>`}
+        <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="min-width:90px;max-width:130px"><label for="bxL">Put on level</label><select id="bxL" class="sel">${Array.from({ length: u.levels }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></div><button type="button" class="btn" id="bxAdd">Add a box</button></div>`) : "";
+    el.innerHTML = `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
       ${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
       <div class="row"><div class="field" style="min-width:150px"><label for="uName">Name</label><input id="uName" type="text" maxlength="40" value="${esc(u.name)}"></div>
         <div class="field" style="min-width:120px;max-width:150px"><label for="uKind">Type</label><select id="uKind" class="sel">${types}</select></div></div>
-      <p class="hint">${rm ? "In " + esc(rm.name) : "Not inside a room"}${u.elev > 0 && !desk ? " · hangs " + cm(u.elev) + " cm above the floor" : ""}</p>
-      <fieldset class="pgrp"><legend>Size</legend>
-        <div class="row"><div class="field" style="min-width:70px"><label for="uW">Width (cm)</label><input id="uW" type="number" step="5" min="10" max="3000" value="${cm(u.w)}"></div>
-          <div class="field" style="min-width:70px"><label for="uD">Depth (cm)</label><input id="uD" type="number" step="5" min="10" max="3000" value="${cm(u.d)}"></div>
-          <div class="field" style="min-width:70px"><label for="uH">${desk ? "Table top height" : "Height"} (cm)</label><input id="uH" type="number" step="5" min="10" max="1000" value="${cm(u.h)}"></div></div>
-        <div style="margin-top:8px"><label for="uPre">Common sizes</label><select id="uPre" class="sel"><option value="">Pick a size...</option>${(PRESETS[u.kind] || []).map(p => `<option value="${p.join(",")}">${p[0]} × ${p[1]} × ${p[2]} cm</option>`).join("")}</select></div></fieldset>
-      ${desk ? "" : `<fieldset class="pgrp"><legend>${u.kind === "drawers" ? "Drawers" : "Levels"}</legend>
-        <div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div></fieldset>`}
-      <fieldset class="pgrp"><legend>Front view</legend><canvas id="uFront" style="width:100%;height:170px;display:block;background:#fff;border:1px solid var(--line)"></canvas></fieldset>
-      ${(() => { const c = clashes(u); return c.length ? `<p class="status-line err" style="margin:8px 0 0">Overlaps ${esc(c.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""; })()}
-      ${!desk && !rack && u.elev > 0 ? `<fieldset class="pgrp"><legend>Under this cabinet</legend><p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
-        <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div></fieldset>` : ""}
-      ${desk ? `<fieldset class="pgrp"><legend>Under the ${u.kind === "bench" ? "bench" : "desk"}</legend><p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button></fieldset>` : ""}
-      ${rack ? `<fieldset class="pgrp"><legend>Boxes on this rack</legend>
-        ${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}"><span>${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it on Setup, Place items.</p>`}
-        <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="min-width:90px;max-width:130px"><label for="bxL">Put on level</label><select id="bxL" class="sel">${Array.from({ length: u.levels }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></div><button type="button" class="btn" id="bxAdd">Add a box</button></div></fieldset>` : ""}
-      <fieldset class="pgrp"><legend>Colour</legend>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label>
-        <button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div></fieldset>
-      <fieldset class="pgrp"><legend>Position</legend>
-        <div class="row"><div class="field" style="min-width:70px"><label for="uX">Left edge (m)</label><input id="uX" type="number" step="0.05" value="${r2(u.x)}"></div><div class="field" style="min-width:70px"><label for="uZ">Top edge (m)</label><input id="uZ" type="number" step="0.05" value="${r2(u.z)}"></div>
-          ${desk ? "" : `<div class="field" style="min-width:90px"><label for="uE">Off the floor (cm)</label><input id="uE" type="number" step="5" min="0" max="500" value="${cm(u.elev)}"></div>`}</div>
-        <div class="row" style="margin-top:8px;align-items:center"><button type="button" class="btn sec" id="uRotL" aria-label="Turn left">↺ Turn</button><button type="button" class="btn sec" id="uRot" aria-label="Turn right">Turn ↻</button><button type="button" class="btn sec" id="uWall">Snap to wall</button>${desk ? "" : `<button type="button" class="btn sec" id="uMount">Mount on wall</button>`}</div>
-        <div style="margin-top:10px"><label>Front faces (white edge on the plan)</label>
-          <div class="row" style="gap:6px;align-items:center" role="group" aria-label="Which side is the front">${[["up", "↑ Up"], ["left", "← Left"], ["down", "↓ Down"], ["right", "→ Right"]].map(([d, l]) => `<button type="button" class="btn ${facing(u.rot) === d ? "" : "sec"}" data-front="${d}" aria-pressed="${facing(u.rot) === d}" style="padding:6px 10px">${l}</button>`).join("")}</div>
-          <p class="hint">Picking a side keeps the shape where it is and moves the front to that edge. Width is measured across the front. Snap to wall puts the back against the nearest straight wall.${desk ? "" : " Mount on wall also lifts it 120 cm off the floor."}</p></div></fieldset>
+      <p class="hint">${rm ? "In " + esc(rm.name) : "Not inside a room"}${u.elev > 0 && !desk ? " · hangs " + cm(u.elev) + " cm above the floor" : ""}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " stored" : ""}</p>
+      ${clash.length ? `<p class="status-line err" style="margin:6px 0">Overlaps ${esc(clash.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""}
+      ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${desk ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${underCab}${underDesk}${boxesHtml}
+      ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`, false)}
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
-      <p class="hint" style="margin-top:10px">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " stored here: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing stored here yet. Place items under Setup, Place items."}</p>`;
-    paintFront(u);
-    const change = (fn, now) => { if (!state.user) return; burstSnap(u); fn(); draw(); paintFront(u); if (now) { clearTimeout(S.saveT); S.pending = u; flushSave(); } else scheduleSave(u); };
+      ${its.length ? `<p class="hint" style="margin-top:10px">Stored here: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing stored here yet. Place items under Setup, Place items.</p>`}`;
+    bindSecs(el);
+    const change = (fn, now) => { if (!state.user) return; burstSnap(u); fn(); draw(); if (now) { clearTimeout(S.saveT); S.pending = u; flushSave(); } else scheduleSave(u); };
     const numIn = (id, key, lo, hi, div) => { const n = $("#" + id); if (!n) return; n.oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || !(v >= lo && v <= hi)) return; change(() => { u[key] = r2(v / div); }); }; };
     numIn("uW", "w", 10, 3000, 100); numIn("uD", "d", 10, 3000, 100); numIn("uH", "h", 10, 1000, 100); numIn("uE", "elev", 0, 500, 100);
     $("#uX").oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || isNaN(v)) return; change(() => { u.x = r2(v); }); };
@@ -415,6 +577,7 @@
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintSizeInputs(u); e.target.value = ""; };
     if ($("#uL")) { const setL = v => { v = clamp(Math.round(v) || 1, 1, 30); $("#uL").value = v; change(() => { u.levels = v; }); if (rack) setTimeout(paintProps, 700); };
       $("#uL").oninput = e => { if (e.target.value) setL(Number(e.target.value)); }; $("#uLm").onclick = () => setL(u.levels - 1); $("#uLp").onclick = () => setL(u.levels + 1); }
+    el.querySelectorAll("[data-n]").forEach(b => b.onclick = () => requireAuth(() => { const [dx, dz, de] = b.dataset.n.split(",").map(Number); nudge(u, dx, dz, de); }));
     el.querySelectorAll(".sw").forEach(b => b.onclick = () => { change(() => { u.color = b.dataset.col; }, true); paintProps(); });
     $("#uCol").oninput = e => change(() => { u.color = e.target.value.toUpperCase(); });
     $("#uCol").onchange = () => paintProps();
@@ -437,22 +600,22 @@
     try { const id = await saveUnit(b); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); } catch (e) {}
   }
   function boxProps(u, el) {
-    const p = parentOf(u), racks = S.units.filter(x => x.kind === "rack"), its = itemsAt(u.id), col = colorOf(u), ro = !state.user;
-    el.innerHTML = PSTYLE + `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
+    const p = parentOf(u), racks = S.units.filter(x => x.kind === "rack"), its = itemsAt(u.id), col = colorOf(u), ro = !state.user, over = boxLayout(p).find(e => e.b.id === u.id)?.over;
+    el.innerHTML = `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
       ${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
       <div class="row"><div class="field"><label for="uName">Box name</label><input id="uName" type="text" maxlength="40" value="${esc(u.name)}"></div></div>
-      <p class="hint">${esc(unitPath(u))}</p>
-      <fieldset class="pgrp"><legend>On the rack</legend><div class="row"><div class="field" style="min-width:140px"><label for="bxR">Rack</label><select id="bxR" class="sel">${racks.map(r => `<option value="${r.id}" ${r.id === p.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></div>
-        <div class="field" style="min-width:80px;max-width:110px"><label for="bxLv">Level</label><select id="bxLv" class="sel">${Array.from({ length: p.levels }, (_, i) => `<option ${u.parent_level === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div></div></fieldset>
-      <fieldset class="pgrp"><legend>Size</legend>
-        <div class="row"><div class="field" style="min-width:70px"><label for="uW">Width (cm)</label><input id="uW" type="number" step="5" min="10" max="300" value="${cm(u.w)}"></div><div class="field" style="min-width:70px"><label for="uD">Depth (cm)</label><input id="uD" type="number" step="5" min="10" max="300" value="${cm(u.d)}"></div><div class="field" style="min-width:70px"><label for="uH">Height (cm)</label><input id="uH" type="number" step="5" min="10" max="300" value="${cm(u.h)}"></div></div>
+      <p class="hint">${esc(unitPath(u))}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " inside" : ""}</p>
+      ${sec("bxon", "On the rack", `<div class="row"><div class="field" style="min-width:140px"><label for="bxR">Rack</label><select id="bxR" class="sel">${racks.map(r => `<option value="${r.id}" ${r.id === p.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></div>
+        <div class="field" style="min-width:80px;max-width:110px"><label for="bxLv">Level</label><select id="bxLv" class="sel">${Array.from({ length: p.levels }, (_, i) => `<option ${u.parent_level === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div></div>`)}
+      ${sec("bxsize", "Size", `<div class="row"><div class="field" style="min-width:70px"><label for="uW">Width (cm)</label><input id="uW" type="number" step="5" min="10" max="300" value="${cm(u.w)}"></div><div class="field" style="min-width:70px"><label for="uD">Depth (cm)</label><input id="uD" type="number" step="5" min="10" max="300" value="${cm(u.d)}"></div><div class="field" style="min-width:70px"><label for="uH">Height (cm)</label><input id="uH" type="number" step="5" min="10" max="300" value="${cm(u.h)}"></div></div>
         <div style="margin-top:8px"><label for="uPre">Common sizes</label><select id="uPre" class="sel"><option value="">Pick a size...</option>${SIZES_BOX.map(q => `<option value="${q.join(",")}">${q[0]} × ${q[1]} × ${q[2]} cm</option>`).join("")}</select></div>
-        ${boxLayout(p).find(e => e.b.id === u.id)?.over ? `<p class="status-line err">This box does not fit on that level of the rack (too wide, deep or tall).</p>` : ""}</fieldset>
-      <fieldset class="pgrp"><legend>Colour</legend><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div></fieldset>
+        ${over ? `<p class="status-line err">This box does not fit on that level of the rack (too wide, deep or tall).</p>` : ""}`)}
+      ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`, false)}
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="bxBack">Back to ${esc(p.name)}</button><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div></fieldset>
-      <p class="hint" style="margin-top:10px">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " inside: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing inside yet. Place items in it under Setup, Place items."}</p>`;
+      ${its.length ? `<p class="hint" style="margin-top:10px">Inside: ${esc(its.slice(0, 6).map(itemName).join(", "))}${its.length > 6 ? "…" : ""}</p>` : `<p class="hint" style="margin-top:10px">Nothing inside yet. Place items in it under Setup, Place items.</p>`}`;
+    bindSecs(el);
     const change = (fn, now) => { if (!state.user) return; burstSnap(u); fn(); draw(); if (now) { clearTimeout(S.saveT); S.pending = u; flushSave(); } else scheduleSave(u); };
-    const numIn = (id, key) => { $("#" + id).oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || !(v >= 10 && v <= 300)) return; change(() => { u[key] = r2(v / 100); }); setTimeout(() => { if (S.sel && S.sel.id === u.id) boxWarn(u); }, 0); }; };
+    const numIn = (id, key) => { $("#" + id).oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || !(v >= 10 && v <= 300)) return; change(() => { u[key] = r2(v / 100); }); }; };
     numIn("uW", "w"); numIn("uD", "d"); numIn("uH", "h");
     $("#uName").oninput = e => { const v = e.target.value.trim(); if (v) change(() => { u.name = v; }); };
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintProps(); };
@@ -466,7 +629,6 @@
     $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); };
     $("#uDel").onclick = () => requireAuth(async () => { const back = p.id; await removeUnit(u); if (!unit(u.id)) { S.sel = { kind: "unit", id: back }; paintProps(); draw(); } });
   }
-  function boxWarn(u) { /* the "does not fit" note is redrawn the next time the panel opens */ }
   function roomDialog(r, pts) {
     if (!state.user) { draw(); return requireAuth(() => roomDialog(r, pts)); }
     const d = $("#dlg"); d.innerHTML = `<form method="dialog" id="rmForm"><div class="dlg-h"><h2>${r ? "Room" : "New room"}</h2></div><div class="dlg-b">

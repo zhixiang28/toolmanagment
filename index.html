@@ -267,11 +267,11 @@ const SECTIONS = [
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"], ["loans", "Loans", 1]]],
   ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["history", "History"]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
-  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scale"], ["label", "Sorter camera"], ["detect", "Live detection", 1]]],
+  ["setup", "Setup", [["tools", "Catalogue"], ["items", "Consumables", 1], ["assets", "Assets", 1], ["sitems", "Place items", 1], ["scale", "Scales"], ["sorter", "Sorter"], ["wunits", "Weighing units", 1], ["label", "Label pictures", 1], ["detect", "Live detection", 1]]],
 ];
 /* pages that belong together share one nav entry and show a small switch above the page */
-const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["label", "Label pictures"], ["detect", "Live detection"]]];
-const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", detect: "label", loans: "board" };
+const PAGESEGS = [[["tools", "Tools"], ["items", "Consumables"], ["assets", "Assets"], ["sitems", "Place items"]], [["scale", "Tool scale"], ["wunits", "Weighing units"]], [["sorter", "Bins and log"], ["label", "Label pictures"], ["detect", "Live detection"]]];
+const NAVKEY = { items: "tools", assets: "tools", sitems: "tools", wunits: "scale", label: "sorter", detect: "sorter", loans: "board" };
 const navKey = t => NAVKEY[t] || t;
 const sectionOf = t => SECTIONS.find(s => s[2].some(([k]) => k === t)) || SECTIONS[0];
 const ICON = {
@@ -486,7 +486,7 @@ function labelTables() {
 function renderTab() {
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets, wunits: renderWunits, sorter: renderSorter })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -504,7 +504,7 @@ async function refreshDevice() {
 }
 async function refreshAll() {
   try {
-    const [tools, events, citems, cevents, reorder, srooms, sunits, assets, loans] = await Promise.all([
+    const [tools, events, citems, cevents, reorder, srooms, sunits, assets, loans, wunits, sbins, sevents] = await Promise.all([
       guard(sb.from("tools").select("*").eq("active", true).order("name")),
       guard(sb.from("tool_events").select("*").order("id", { ascending: false }).limit(200)),
       guard(sb.from("consumables").select("*").eq("active", true).order("name")),
@@ -514,11 +514,14 @@ async function refreshAll() {
       guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level").eq("active", true)),
       guard(sb.from("assets").select("*").eq("active", true).order("name")),
       guard(sb.from("item_loans").select("*").order("taken_at", { ascending: false }).limit(300)),
+      guard(sb.from("weigh_units").select("*").eq("active", true).order("name")),
+      guard(sb.from("sorter_bins").select("*").eq("active", true).order("servo")),
+      guard(sb.from("sorter_events").select("*").order("id", { ascending: false }).limit(60)),
     ]);
     await refreshDevice();
-    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits) + JSON.stringify(assets) + JSON.stringify(loans), evKey = JSON.stringify(events[0]?.id) + events.length;
+    const toolsKey = JSON.stringify(tools) + JSON.stringify(citems) + (cevents[0]?.id ?? 0) + JSON.stringify(reorder) + JSON.stringify(srooms) + JSON.stringify(sunits) + JSON.stringify(assets) + JSON.stringify(loans) + JSON.stringify(wunits) + JSON.stringify(sbins) + (sevents[0]?.id ?? 0), evKey = JSON.stringify(events[0]?.id) + events.length;
     const changed = toolsKey !== state._toolsKey || evKey !== state._evKey;
-    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; state.assets = assets; state.loans = loans || []; updateBadge(); if (changed && window.SpaceUI && ["s3d", "splan"].includes(state.tab)) SpaceUI.onData();
+    state._toolsKey = toolsKey; state._evKey = evKey; state.tools = tools; state.events = events; state.citems = citems; state.cevents = cevents; state.reorder = reorder; state.spaceRooms = srooms; state.spaceUnits = sunits; state.assets = assets; state.loans = loans || []; state.wunits = wunits || []; state.sbins = sbins || []; state.sevents = sevents || []; updateBadge(); if (changed && window.SpaceUI && ["s3d", "splan"].includes(state.tab)) SpaceUI.onData();
     const top = events[0]?.id ?? 0;
     if (state.seenEventId == null) state.seenEventId = top;
     else if (top > state.seenEventId) {
@@ -713,7 +716,7 @@ function paintSheet() {
   const hist = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
   const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ...(loanFor("asset", it.id) ? [["Taken by", loanFor("asset", it.id).person + (whyText(loanFor("asset", it.id)) ? " · " + whyText(loanFor("asset", it.id)) : "")], ["Return", dueWord(loanFor("asset", it.id))]] : []), ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
     : tool ? [["Status", it.status === "out" ? "Out " + ago(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
-    : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
+    : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ...(wunitOf(it.id) ? [["Weighing unit", wunitOf(it.id).name + (wunitOf(it.id).last_g != null ? " · " + fmtG(wunitOf(it.id).last_g, 1) + " g" : "")]] : []), ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
     <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
     ${ord ? `<div class="banner info" style="margin:0"><span>On the order list: ${ord.qty} × (${esc(ord.reason)}${ord.status === "in_draft" ? ", in the MR draft" : ""}).</span></div>` : ""}
@@ -1038,7 +1041,7 @@ function renderStock() {
   <div class="row" style="margin-bottom:12px;align-items:center"><div class="field" style="max-width:320px"><input id="stQ" type="search" placeholder="Filter by name or size" value="${esc(state.stockQ || "")}" aria-label="Filter"></div>
     <div class="filters" role="group" aria-label="Show" style="margin:0">${[["all", "All"], ["low", "Low"], ["stale", "Not counted in 30 days"]].map(([k, l]) => `<button data-act="stockf" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div></div>
   ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Where</th><th>On hand</th><th>Minimum</th><th>Counted</th><th></th></tr></thead><tbody>
-  ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(whereText(i) || "-")}</td>
+  ${list.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}${wunitOf(i.id) ? `<div class="hint">Weighed by ${esc(wunitOf(i.id).name)}</div>` : ""}</td><td>${esc(i.category)}</td><td>${esc(whereText(i) || "-")}</td>
     <td class="num"><strong>${i.count_on_hand}</strong> ${lowItem(i) ? `<span class="chip low">Low</span>` : ""}${onOrder("consumable", i.id) ? ` <span class="chip">On order</span>` : ""}</td><td class="num">${i.min_stock || "-"}</td><td>${i.counted_at ? esc(ago(i.counted_at)) + " ago" : "never"}</td>
     <td><button class="btn sec" data-act="add-stock" data-id="${i.id}">Add stock</button> <button class="btn sec" data-act="count-item" data-id="${i.id}">Count</button>${lowItem(i) && !onOrder("consumable", i.id) ? ` <button class="btn sec" data-act="reorder-suggest" data-id="${i.id}">Order</button>` : ""}${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty"><p>Nothing matches this filter.</p></div>`}`;
@@ -1197,7 +1200,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "47";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "48";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1233,6 +1236,11 @@ async function onMainClick(ev) {
       <button type="button" class="btn" data-act="citem-add" style="text-align:left">A consumable<br><small style="font-weight:400">Something that gets used up: screws, tape</small></button>
       <button type="button" class="btn" data-act="asset-add" style="text-align:left">An asset<br><small style="font-weight:400">Equipment you keep track of: a PC, an oscilloscope</small></button></div></div><div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`; if (!d.open) d.showModal(); });
     else if (a === "add-stock") requireAuth(() => addStockSheet(el.dataset.id));
+    else if (a === "wu-add") requireAuth(() => wunitDialog(null));
+    else if (a === "wu-edit") requireAuth(() => wunitDialog((state.wunits || []).find(w => w.id === el.dataset.id)));
+    else if (a === "wu-zero") requireAuth(async () => { try { await guard(rpcAuth("toolscale_wunit_zero", { p_id: el.dataset.id })); await refreshAll(); renderTab(); toast("Counting from the weight now."); } catch (e) {} });
+    else if (a === "bin-add") requireAuth(() => binDialog(null, !!el.dataset.reject));
+    else if (a === "bin-edit") requireAuth(() => binDialog((state.sbins || []).find(b => b.id === el.dataset.id)));
     else if (a === "take") requireAuth(() => takeSheet(el.dataset.kind, el.dataset.id));
     else if (a === "loan-return") requireAuth(() => returnLoan(el.dataset.loan));
     else if (a === "loc-open") locSheet(el.dataset.id);
@@ -1411,6 +1419,60 @@ function loansHtml() {
   const recent = [...done.map(l => [l.returned_at, `${l.item_name} returned by ${l.person}`, `Taken ${when(l.taken_at)}`]), ...used.map(l => [l.taken_at, `${l.qty} × ${l.item_name} used by ${l.person}`, ""])].sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 12);
   return `${ol.length ? `<section class="block"><h2>Taken out (${ol.length})${late.length ? ` · <span style="color:var(--alert)">${late.length} overdue</span>` : ""}</h2><div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Who</th><th>Taken</th><th>Return</th><th>From</th><th></th></tr></thead><tbody>${ol.map(l => `<tr class="${isLate(l) ? "late" : ""}"><td><strong>${esc(l.item_name)}</strong>${l.kind === "consumable" ? `<div class="hint">${l.qty} taken</div>` : ""}</td><td>${esc(l.person)}</td><td>${esc(when(l.taken_at))}</td><td>${isLate(l) ? `<span class="chip warn">${esc(dueWord(l))}</span>` : esc(dueWord(l))}</td><td>${esc(place(l))}</td><td><button class="btn" data-act="loan-return" data-loan="${l.id}">Return</button></td></tr>`).join("")}</tbody></table></div></section>` : ""}
   ${recent.length ? `<details class="block"><summary style="cursor:pointer;font-weight:700">Recently returned or used</summary><ul class="log" style="margin-top:8px">${recent.map(([ts, t, n]) => `<li><div class="t">${esc(when(ts))}</div><div><div class="what">${esc(t)}</div>${n ? `<div class="note">${esc(n)}</div>` : ""}</div></li>`).join("")}</ul></details>` : ""}`;
+}
+
+/* ---------- weighing units: a load cell under one bin watches what people take and add. The sorter sends each part to its bin. ---------- */
+const wunitOf = cid => (state.wunits || []).find(w => w.consumable_id === cid);
+const wuOnline = w => w.last_seen && Date.now() - new Date(w.last_seen) < 90e3;
+const piecesOn = (w, c) => c && Number(c.unit_g) > 0 && w.last_g != null ? Math.max(0, Math.round((Number(w.last_g) - Number(w.tare_g || 0)) / Number(c.unit_g))) : null;
+function renderWunits() {
+  const list = state.wunits || [], cn = id => state.citems.find(c => c.id === id);
+  $("#main").innerHTML = `<div class="summary"><div><h1>Weighing units</h1><p>A weighing unit is a load cell under one bin of parts. When someone takes or adds parts, it sees the weight change, works out how many pieces that is, and updates the stock. History shows it as used or added.</p></div><button class="btn" data-act="wu-add">Add a weighing unit</button></div>
+  ${list.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Name</th><th>Item</th><th>Load cell</th><th>Weight now</th><th>Counts as</th><th>Status</th><th></th></tr></thead><tbody>${list.map(w => { const c = cn(w.consumable_id), n = piecesOn(w, c); return `<tr><td><strong>${esc(w.name)}</strong></td><td>${c ? `<button class="linkname" data-act="sheet" data-kind="consumable" data-id="${c.id}">${esc(fullName(c))}</button>${Number(c.unit_g) > 0 ? "" : `<div class="hint" style="color:var(--alert)">No weight per piece yet</div>`}` : `<span class="hint">No item chosen</span>`}</td><td class="num">${esc(w.device_id)}</td><td class="num">${w.last_g == null ? "-" : fmtG(w.last_g, 1) + " g"}</td><td class="num">${n == null ? "-" : "about " + n + " pieces"}${c ? `<div class="hint">${c.count_on_hand} on hand</div>` : ""}</td><td>${wuOnline(w) ? `<span class="chip in">Online</span>` : `<span class="chip">${w.last_seen ? "Last seen " + esc(ago(w.last_seen)) + " ago" : "Never seen"}</span>`}</td>
+    <td><button class="btn sec" data-act="wu-edit" data-id="${w.id}">Edit</button> <button class="btn sec" data-act="wu-zero" data-id="${w.id}" title="Treat the weight now as the starting point">Start from now</button></td></tr>`; }).join("")}</tbody></table></div>`
+    : `<div class="empty"><h2>No weighing units yet</h2><p>Add one for each bin that has a load cell under it, and choose which part it holds. It starts watching as soon as the load cell reports.</p><button class="btn" data-act="wu-add">Add the first one</button></div>`}
+  <details class="block"><summary style="cursor:pointer;font-weight:700">For the build: how the load cell reports</summary><div style="margin-top:8px;display:grid;gap:6px"><p style="margin:0">Each reading is one call to the database. A stable reading can change stock; an unstable one only updates the live weight.</p>
+    <code style="display:block;white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);padding:8px">POST ${esc(SUPABASE_URL)}/rest/v1/rpc/toolscale_wunit_report\nheaders: apikey, Content-Type: application/json\nbody: {"p_device": "your load cell ID", "p_g": 1234.5, "p_stable": true}</code>
+    <p class="hint" style="margin:0">It returns the number of pieces added (positive) or used (negative), 0 for no change, or null if the ID is not set up here. Small changes under the limit you set, or under 60% of one piece, are ignored. If the bin is refilled or moved, press Start from now.</p></div></details>`;
+}
+function wunitDialog(w) {
+  const d = $("#dlg"), used = new Set((state.wunits || []).filter(x => x.id !== w?.id).map(x => x.consumable_id)), opts = state.citems.filter(c => !used.has(c.id));
+  d.innerHTML = `<form id="wuForm" method="dialog"><div class="dlg-h"><h2>${w ? "Edit weighing unit" : "New weighing unit"}</h2></div><div class="dlg-b">
+    <div class="field"><label for="wu_name">Name</label><input id="wu_name" required maxlength="40" value="${esc(w?.name || "")}" placeholder="e.g. M4 screw bin"></div>
+    <div class="field"><label for="wu_dev">Load cell ID</label><input id="wu_dev" required maxlength="60" value="${esc(w?.device_id || "")}" placeholder="the ID it reports under"><div class="hint">This must match what the load cell sends.</div></div>
+    <div class="field"><label for="wu_item">Part in this bin</label><select id="wu_item" class="sel"><option value="">Not chosen yet</option>${opts.map(c => `<option value="${c.id}" ${c.id === w?.consumable_id ? "selected" : ""}>${esc(fullName(c))}${Number(c.unit_g) > 0 ? "" : " (needs weight per piece)"}</option>`).join("")}</select></div>
+    <div class="row"><div class="field" style="min-width:140px"><label for="wu_tare">Empty bin weight (g)</label><input id="wu_tare" type="number" min="0" step="0.1" value="${w ? w.tare_g : 0}"></div><div class="field" style="min-width:140px"><label for="wu_min">Ignore changes under (g)</label><input id="wu_min" type="number" min="0.1" step="0.1" value="${w ? w.min_change_g : 1}"></div></div>
+    <p class="hint" style="margin:0">The weight per piece comes from the part, under Setup, Catalogue, Consumables.</p></div>
+    <div class="dlg-f">${w ? `<button type="button" class="btn danger" id="wuDel" style="margin-right:auto">Remove</button>` : ""}<button type="submit" value="cancel" class="btn sec" formnovalidate>Cancel</button><button type="button" class="btn" id="wuSave">Save</button></div></form>`;
+  if (!d.open) d.showModal();
+  $("#wu_item").onchange = e => { const c = state.citems.find(x => x.id === e.target.value); if (c && !Number($("#wu_tare").value) && Number(c.container_g) > 0) $("#wu_tare").value = c.container_g; };
+  $("#wuSave").onclick = () => { const f = $("#wuForm"); if (!f.reportValidity()) return; requireAuth(async () => { try { await guard(rpcAuth("toolscale_wunit_save", { p_id: w?.id || null, p_name: $("#wu_name").value, p_device: $("#wu_dev").value, p_consumable: $("#wu_item").value || null, p_tare: Number($("#wu_tare").value) || 0, p_min: Number($("#wu_min").value) || 1 })); await refreshAll(); d.close(); renderTab(); toast("Saved"); } catch (e) {} }); };
+  if ($("#wuDel")) $("#wuDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this weighing unit? Its stock counts stay as they are.")) return; try { await guard(rpcAuth("toolscale_wunit_hide", { p_id: w.id })); await refreshAll(); d.close(); renderTab(); } catch (e) {} });
+}
+function renderSorter() {
+  const bins = state.sbins || [], ev = state.sevents || [], cn = id => state.citems.find(c => c.id === id), bn = id => bins.find(b => b.id === id);
+  const sortedBy = b => ev.filter(e => e.bin_id === b.id && e.result === "sorted").length;
+  $("#main").innerHTML = `<div class="summary"><div><h1>Sorter</h1><p>The conveyor's camera names each fastener. The database says which bin to send it to, and the servo moves it there. Each bin sits on a weighing unit, so the stock count follows from the weight.</p></div><div class="row" style="gap:8px"><button class="btn" data-act="bin-add">Add a bin</button><button class="btn sec" data-act="bin-add" data-reject="1">Add a reject bin</button></div></div>
+  ${bins.length && !bins.some(b => b.is_reject) ? `<div class="banner info"><span>No reject bin yet. Unknown or unsure parts have nowhere to go.</span></div>` : ""}
+  ${bins.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Bin</th><th>Servo</th><th>Gets</th><th>Recently sorted</th><th></th></tr></thead><tbody>${bins.map(b => `<tr><td><strong>${esc(b.name)}</strong></td><td class="num">${b.servo}</td><td>${b.is_reject ? `<span class="chip warn">Unknown and unsure parts</span>` : cn(b.consumable_id) ? esc(fullName(cn(b.consumable_id))) : `<span class="hint">No part chosen</span>`}</td><td class="num">${sortedBy(b)}</td><td><button class="btn sec" data-act="bin-edit" data-id="${b.id}">Edit</button></td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty"><h2>No bins yet</h2><p>Add a bin for each part type the sorter should separate, and a reject bin for anything it is not sure of.</p><button class="btn" data-act="bin-add">Add the first bin</button></div>`}
+  <section class="block"><h2>Recent sorting</h2>${ev.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>When</th><th>Part</th><th>Sure</th><th>Bin</th><th>Result</th></tr></thead><tbody>${ev.slice(0, 30).map(e => `<tr><td>${esc(when(e.ts))}</td><td>${esc(cn(e.consumable_id) ? fullName(cn(e.consumable_id)) : e.class_name || "unknown")}</td><td class="num">${e.confidence == null ? "-" : Math.round(e.confidence * 100) + "%"}</td><td>${esc(bn(e.bin_id)?.name || "-")}${e.servo != null ? ` <span class="hint">(servo ${e.servo})</span>` : ""}</td><td>${esc(e.result)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><p>Nothing sorted yet. Each part the camera sees will appear here.</p></div>`}</section>
+  <details class="block"><summary style="cursor:pointer;font-weight:700">For the build: how the sorter asks where to send a part</summary><div style="margin-top:8px;display:grid;gap:6px"><p style="margin:0">After the camera names a part, call this once per part. It records the event and returns the servo number to move. Parts below the confidence you pass go to the reject bin.</p>
+    <code style="display:block;white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);padding:8px">POST ${esc(SUPABASE_URL)}/rest/v1/rpc/toolscale_sorter_route\nheaders: apikey, Content-Type: application/json\nbody: {"p_consumable": "item ID from the model's classes", "p_conf": 0.87, "p_class": "M4 pan head", "p_min": 0.5}</code>
+    <p class="hint" style="margin:0">The item ID is the id in the trained model's class list (the same item you labelled). It returns the servo number, or null if there is no bin and no reject bin.</p></div></details>`;
+}
+function binDialog(b, reject) {
+  const d = $("#dlg"), used = new Set((state.sbins || []).filter(x => x.id !== b?.id && !x.is_reject).map(x => x.consumable_id)), opts = state.citems.filter(c => !used.has(c.id)), isR = b ? b.is_reject : !!reject, usedServo = new Set((state.sbins || []).filter(x => x.id !== b?.id).map(x => x.servo)); let nextServo = 0; while (usedServo.has(nextServo)) nextServo++;
+  d.innerHTML = `<form id="binForm" method="dialog"><div class="dlg-h"><h2>${b ? "Edit bin" : isR ? "New reject bin" : "New bin"}</h2></div><div class="dlg-b">
+    <div class="field"><label for="bn_name">Name</label><input id="bn_name" required maxlength="40" value="${esc(b?.name || (isR ? "Reject" : ""))}" placeholder="e.g. M4 screws"></div>
+    <div class="field" style="max-width:160px"><label for="bn_servo">Servo number</label><input id="bn_servo" type="number" min="0" max="255" step="1" required value="${b ? b.servo : nextServo}"></div>
+    <label style="display:flex;gap:10px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="bn_rej" ${isR ? "checked" : ""} style="width:20px;height:20px"> Reject bin: unknown or unsure parts go here</label>
+    <div class="field" id="bn_itemW" ${isR ? "hidden" : ""}><label for="bn_item">Part for this bin</label><select id="bn_item" class="sel"><option value="">Not chosen yet</option>${opts.map(c => `<option value="${c.id}" ${c.id === b?.consumable_id ? "selected" : ""}>${esc(fullName(c))}</option>`).join("")}</select></div></div>
+    <div class="dlg-f">${b ? `<button type="button" class="btn danger" id="bnDel" style="margin-right:auto">Remove</button>` : ""}<button type="submit" value="cancel" class="btn sec" formnovalidate>Cancel</button><button type="button" class="btn" id="bnSave">Save</button></div></form>`;
+  if (!d.open) d.showModal();
+  $("#bn_rej").onchange = e => { $("#bn_itemW").hidden = e.target.checked; };
+  $("#bnSave").onclick = () => { if (!$("#binForm").reportValidity()) return; requireAuth(async () => { try { await guard(rpcAuth("toolscale_sbin_save", { p_id: b?.id || null, p_name: $("#bn_name").value, p_servo: Number($("#bn_servo").value), p_consumable: $("#bn_rej").checked ? null : ($("#bn_item").value || null), p_reject: $("#bn_rej").checked })); await refreshAll(); d.close(); renderTab(); toast("Saved"); } catch (e) {} }); };
+  if ($("#bnDel")) $("#bnDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this bin?")) return; try { await guard(rpcAuth("toolscale_sbin_hide", { p_id: b.id })); await refreshAll(); d.close(); renderTab(); } catch (e) {} });
 }
 
 boot();

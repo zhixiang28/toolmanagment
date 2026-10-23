@@ -1093,7 +1093,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       if (k.ptr.size === 1) {
         k.moved += Math.abs(dx) + Math.abs(dy);
         if (e.shiftKey || p.b === 2) { const sc = C.dist * 0.0018, rx = Math.sin(C.th), rz = -Math.cos(C.th), fx = -Math.cos(C.th), fz = -Math.sin(C.th); C.tx += (-rx * dx + fx * dy) * sc; C.tz += (-rz * dx + fz * dy) * sc; }
-        else { C.th -= dx * 0.008; C.ph = clamp(C.ph - dy * 0.008, 0.12, 1.52); }
+        else { C.th += dx * 0.008; C.ph = clamp(C.ph - dy * 0.008, 0.12, 1.52); }
       } else if (k.ptr.size === 2) { const o = [...k.ptr.entries()].find(([id]) => id !== e.pointerId)[1], before = Math.hypot(p.x - o.x, p.y - o.y), after = Math.hypot(e.clientX - o.x, e.clientY - o.y); if (before > 0 && after > 0) C.dist = clamp(C.dist * before / after, 0.8, 120); k.moved += 10; }
       p.x = e.clientX; p.y = e.clientY; camUpdate();
     };

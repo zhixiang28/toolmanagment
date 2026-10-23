@@ -598,7 +598,7 @@ function recentFeed(n) {
 }
 /* ---------- similar things stored in different places: suggest keeping them together ---------- */
 const SIM_OFF = () => { try { return JSON.parse(localStorage.getItem("ts_sim_off") || "[]"); } catch (e) { return []; } };
-const placeKey = it => { const u = it.unit_id && unitById(it.unit_id); return u ? (u.parent_id || u.id) : null; };   // boxes count as the rack they sit on
+const placeKey = it => { let u = it.unit_id && unitById(it.unit_id), n = 0; if (!u) return null; while (u.parent_id && unitById(u.parent_id) && n++ < 10) u = unitById(u.parent_id); return u.id; };   // boxes count as the rack they sit on
 function simNoun(kind, it) {   // the last word of the name is what it is: "Pan head screw M4" is a screw, "Long cutter" a cutter
   const words = String(it.name || "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(w => w.length > 1 && w !== "mm");
   let n = words[words.length - 1] || (kind === "consumable" ? String(it.category || "").toLowerCase() : ""); if (!n) return null;
@@ -671,11 +671,17 @@ function placeHtml(it, k) {
   const units = state.spaceUnits || []; if (!units.length) return `<p class="hint">Draw your shelves under Setup, Space plan, to give it a place you can find in 3D.</p>`;
   const u = units.find(x => x.id === it?.unit_id);
   return `<div class="row"><div class="field"><label for="${k}_unit">Shelf or cabinet</label><select id="${k}_unit" class="sel"><option value="">Not placed</option>${units.map(x => `<option value="${x.id}" ${x.id === it?.unit_id ? "selected" : ""}>${esc(unitLabel(x))}</option>`).join("")}</select></div>
-    <div class="field" style="max-width:120px"><label for="${k}_lvl">Level</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
+    <div class="field" style="max-width:120px"><label for="${k}_lvl" id="${k}_lvlL">${slotWord(u)}</label><select id="${k}_lvl" class="sel">${levelOpts(u, it?.level)}</select></div></div>`;
 }
-const unitLabel = u => { const r = roomOfUnit(u), p = u.parent_id && unitById(u.parent_id); return (r ? r.name + " · " : "") + (p ? p.name + " · level " + u.parent_level + " · " : "") + u.name; };
+const unitLabel = u => {
+  const r = roomOfUnit(u), chain = []; let x = u, n = 0; while (x && x.parent_id && unitById(x.parent_id) && n++ < 10) { chain.unshift(x); x = unitById(x.parent_id); }
+  if (!chain.length) return (r ? r.name + " · " : "") + u.name;
+  return (r ? r.name + " · " : "") + x.name + (x.kind === "rack" ? " · level " + chain[0].parent_level : "") + " · " + chain.map(c => c.name).join(" › ");
+};
+const isBox = u => u && u.kind === "box";
+const slotWord = u => isBox(u) ? "Section" : "Level";
 const levelOpts = (u, lv) => u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
-function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { $("#" + k + "_lvl").innerHTML = levelOpts((state.spaceUnits || []).find(x => x.id === us.value), 1); }; }
+function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { const u = (state.spaceUnits || []).find(x => x.id === us.value); $("#" + k + "_lvl").innerHTML = levelOpts(u, 1); const l = $("#" + k + "_lvlL"); if (l) l.textContent = slotWord(u); }; }
 async function savePlace(kind, id, k, it) {
   const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
   if ((it?.unit_id || null) === unit && (unit == null || Number(it.level) === lvl)) return;
@@ -709,7 +715,7 @@ function paintSheet() {
 const againHtml = id => `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="${id}"> Add another here after saving</label>`;
 /* Add something to a shelf, cabinet or box straight from the Find page: new consumable, new tool, or one that is already in the app */
 function addHere(unitId, level) {
-  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  const u = unitById(unitId); if (!u) return; const d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : " · level " + level);
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Add to ${esc(where)}</h2></div><div class="dlg-b"><p style="margin:0">What are you putting here?</p>
     <div style="display:grid;gap:8px"><button type="button" class="btn" id="ah-c">New consumable <span style="font-weight:400">(screws, nuts, washers...)</span></button><button type="button" class="btn" id="ah-t">New tool</button><button type="button" class="btn sec" id="ah-e">Something already in the app</button></div></div>
     <div class="dlg-f"><button type="submit" class="btn sec">Cancel</button></div></form>`;
@@ -719,7 +725,7 @@ function addHere(unitId, level) {
   $("#ah-e").onclick = () => placeExisting(unitId, level);
 }
 function placeExisting(unitId, level) {
-  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (u.parent_id ? "" : " · level " + level);
+  const u = unitById(unitId), d = $("#dlg"), where = unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + level : "") : " · level " + level);
   const rows = () => { const q = ($("#pe-q")?.value || "").toLowerCase(), list = allEntries().filter(({ it }) => !q || fullName(it).toLowerCase().includes(q)).sort((a, b) => (a.it.unit_id ? 1 : 0) - (b.it.unit_id ? 1 : 0) || a.it.name.localeCompare(b.it.name)).slice(0, 40);
     return list.length ? list.map(({ kind, it }) => `<li><div class="nm"><strong>${esc(fullName(it))}</strong><div class="sub">${kindName(kind)} · ${it.unit_id === unitId && Number(it.level) === Number(level) ? "already here" : esc(whereText(it) || "not placed yet")}</div></div>${it.unit_id === unitId && Number(it.level) === Number(level) ? `<span class="chip in">Here</span>` : `<button type="button" class="btn sec" data-pk="${kind}:${it.id}">Place here</button>`}</li>`).join("") : `<li><div class="nm hint">Nothing matches.</div></li>`; };
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Place in ${esc(where)}</h2></div><div class="dlg-b"><div><label for="pe-q">Search</label><input id="pe-q" type="search" placeholder="name or size" autocomplete="off"></div><ul class="res" id="pe-l" style="max-height:46vh;overflow:auto">${rows()}</ul><p class="hint">Items not placed yet are listed first.</p></div>
@@ -731,7 +737,7 @@ function placeExisting(unitId, level) {
 }
 const unitById = id => (state.spaceUnits || []).find(x => x.id === id);
 function roomOfUnit(u) {
-  const b = (u.parent_id && unitById(u.parent_id)) || u;   // a box on a rack is in the rack's room
+  let b = u, n = 0; while (b.parent_id && unitById(b.parent_id) && n++ < 10) b = unitById(b.parent_id);   // a box on a rack is in the rack's room
   const sw = Number(b.rot) % 180 !== 0, cx = Number(b.x) + (sw ? b.d : b.w) / 2, cz = Number(b.z) + (sw ? b.w : b.d) / 2;
   const inside = pts => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > cz) !== (zj > cz) && cx < (xj - xi) * (cz - zi) / (zj - zi) + xi) c = !c; } return c; };
   return (state.spaceRooms || []).find(x => Array.isArray(x.points) && x.points.length > 2 && inside(x.points)) || null;
@@ -1126,7 +1132,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "28";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "29";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1163,7 +1169,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + (u.parent_id ? "" : " · level " + it.level);
+  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 

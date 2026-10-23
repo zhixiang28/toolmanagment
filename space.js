@@ -307,6 +307,13 @@
     if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); addUnit(u.kind, u); return; }
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); }
   }
+  /* choose which side is the front without moving the shape on the plan: width and depth swap when the front moves to a short side */
+  const FRONT_ROT = { down: 0, left: 90, up: 180, right: 270 };
+  function setFront(u, dir) {
+    const r = FRONT_ROT[dir]; if (r == null || r === u.rot) return;
+    flushSave(); snapUnit(u); if ((r % 180) !== (u.rot % 180)) { const w = u.w; u.w = u.d; u.d = w; } u.rot = r;
+    saveUnit(u).catch(() => {}); paintProps(); draw();
+  }
   function turn(u, by) {   // turn about the centre so it stays in place
     flushSave(); snapUnit(u); const f = fp(u), cx = f.x + f.w / 2, cz = f.z + f.d / 2; u.rot = (u.rot + by + 360) % 360; const g = fp(u); u.x = r2(cx - g.w / 2); u.z = r2(cz - g.d / 2);
     saveUnit(u).catch(() => {}); paintProps(); draw();
@@ -338,7 +345,7 @@
       const L = u.kind === "bench" ? 1 : u.levels;
       for (let i = 0; i < L; i++) {
         const yb2 = yb - bh * i / L, yt = yb - bh * (i + 1) / L; if (i) { g.beginPath(); g.moveTo(x0 + 2, yb2); g.lineTo(x0 + bw - 2, yb2); g.stroke(); }
-        if (bh / L > 12) { g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, (yb2 + yt) / 2); const n = itemsAt(u.id, i + 1).length; if (n) { g.textAlign = "right"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x0 + bw - 5, (yb2 + yt) / 2); } }
+        if (bh / L > 12) { g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, (yb2 + yt) / 2); const n = itemsAt(u.id, i + 1).length; if (n) { g.textAlign = "right"; g.fillText(bw > 90 ? n + " item" + (n > 1 ? "s" : "") : String(n), x0 + bw - 5, (yb2 + yt) / 2); } }
       }
     }
     g.fillStyle = "#14232B"; g.textAlign = "center"; g.font = "600 11px sans-serif"; g.fillText(cm(u.w) + " cm wide", x0 + bw / 2, y0 - 9);
@@ -391,7 +398,9 @@
         <div class="row"><div class="field" style="min-width:70px"><label for="uX">Left edge (m)</label><input id="uX" type="number" step="0.05" value="${r2(u.x)}"></div><div class="field" style="min-width:70px"><label for="uZ">Top edge (m)</label><input id="uZ" type="number" step="0.05" value="${r2(u.z)}"></div>
           ${desk ? "" : `<div class="field" style="min-width:90px"><label for="uE">Off the floor (cm)</label><input id="uE" type="number" step="5" min="0" max="500" value="${cm(u.elev)}"></div>`}</div>
         <div class="row" style="margin-top:8px;align-items:center"><button type="button" class="btn sec" id="uRotL" aria-label="Turn left">↺ Turn</button><button type="button" class="btn sec" id="uRot" aria-label="Turn right">Turn ↻</button><button type="button" class="btn sec" id="uWall">Snap to wall</button>${desk ? "" : `<button type="button" class="btn sec" id="uMount">Mount on wall</button>`}</div>
-        <p class="hint">Front faces ${facing(u.rot)} on the plan (white edge). Snap to wall puts the back against the nearest straight wall.${desk ? "" : " Mount on wall also lifts it 120 cm off the floor."}</p></fieldset>
+        <div style="margin-top:10px"><label>Front faces (white edge on the plan)</label>
+          <div class="row" style="gap:6px;align-items:center" role="group" aria-label="Which side is the front">${[["up", "↑ Up"], ["left", "← Left"], ["down", "↓ Down"], ["right", "→ Right"]].map(([d, l]) => `<button type="button" class="btn ${facing(u.rot) === d ? "" : "sec"}" data-front="${d}" aria-pressed="${facing(u.rot) === d}" style="padding:6px 10px">${l}</button>`).join("")}</div>
+          <p class="hint">Picking a side keeps the shape where it is and moves the front to that edge. Width is measured across the front. Snap to wall puts the back against the nearest straight wall.${desk ? "" : " Mount on wall also lifts it 120 cm off the floor."}</p></div></fieldset>
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
       <p class="hint" style="margin-top:10px">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " stored here: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing stored here yet. Place items under Setup, Place items."}</p>`;
@@ -410,6 +419,7 @@
     $("#uCol").oninput = e => change(() => { u.color = e.target.value.toUpperCase(); });
     $("#uCol").onchange = () => paintProps();
     $("#uColDef").onclick = () => { change(() => { u.color = null; }, true); paintProps(); };
+    el.querySelectorAll("[data-front]").forEach(b => b.onclick = () => requireAuth(() => setFront(u, b.dataset.front)));
     $("#uRot").onclick = () => turn(u, 90); $("#uRotL").onclick = () => turn(u, -90);
     $("#uWall").onclick = () => requireAuth(async () => { await flushSave(); if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} paintProps(); draw(); } });
     if ($("#uMount")) $("#uMount").onclick = () => requireAuth(async () => { await flushSave(); const before = { ...u }; if (!u.elev) u.elev = 1.2; if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} } else { Object.assign(u, before); snapUnit(u); u.elev = before.elev || 1.2; try { await saveUnit(u); } catch (e) {} } paintProps(); draw(); });

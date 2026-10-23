@@ -24,6 +24,10 @@
   const unit = id => S.units.find(u => u.id === id), room = id => S.rooms.find(r => r.id === id);
   /* which way is "right along the front" (R) and "towards the back" (F) for each way a unit can face */
   const DIR = { 0: { R: [1, 0], F: [0, -1] }, 90: { R: [0, 1], F: [1, 0] }, 180: { R: [-1, 0], F: [0, 1] }, 270: { R: [0, -1], F: [-1, 0] } };
+  const isTable = u => u.kind === "desk" || u.kind === "bench";   // a top on legs, with room underneath
+  const vrange = u => isTable(u) ? [(u.elev || 0) + u.h - 0.05, (u.elev || 0) + u.h] : [u.elev || 0, (u.elev || 0) + u.h];   // a table only fills its top: the space under it is free
+  const overlaps2d = (a, b) => { const f = fp(a), g = fp(b); return f.x < g.x + g.w - 0.001 && g.x < f.x + f.w - 0.001 && f.z < g.z + g.d - 0.001 && g.z < f.z + f.d - 0.001; };
+  const clashes = u => tops().filter(o => o.id !== u.id && o.kind !== "rack" && u.kind !== "rack" && overlaps2d(u, o) && vrange(u)[0] < vrange(o)[1] - 0.001 && vrange(o)[0] < vrange(u)[1] - 0.001);
   const parentOf = b => b.parent_id ? unit(b.parent_id) : null;
   const kids = r => S.units.filter(b => b.parent_id === r.id).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
   const tops = () => S.units.filter(u => !parentOf(u));   // boxes on a rack live inside the rack, not on the floor plan
@@ -153,11 +157,19 @@
     else { u.rot = best.plus ? 270 : 90; const g = fp(u); u.x = r2(best.plus ? best.wall : best.wall - g.w); u.z = r2(clamp(cz - g.d / 2, best.lo, Math.max(best.lo, best.hi - g.d))); }
     return true;
   }
+  async function addUnderUnit(top, key) {   // something standing on the floor beneath a wall cabinet, back to the same wall
+    await flushSave(); const sp = ADDS[key] || {}, kind = sp.kind || key, k = KINDS[kind], gap = (top.elev || 0) - 0.05;
+    if (gap < 0.2) return toast("Raise the cabinet first. There is less than 20 cm under it.");
+    const h = Math.min(sp.h ?? k.h, gap), D = DIR[top.rot] || DIR[0], f = fp(top), cx = f.x + f.w / 2, cz = f.z + f.d / 2, w = kind === "drawers" ? k.w : Math.max(0.4, top.w), d = Math.min(sp.d ?? k.d, Math.max(top.d, kind === "bench" ? 0.7 : top.d));
+    const u = { kind, name: k.label + " under " + top.name, w, d, h: r2(h), rot: top.rot, levels: kind === "drawers" ? Math.max(1, Math.round(k.levels * h / k.h)) : k.levels, color: null, elev: 0 };
+    const off = (top.d - u.d) / 2, g = fp(u); u.x = r2(cx + D.F[0] * off - g.w / 2); u.z = r2(cz + D.F[1] * off - g.d / 2);
+    try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); toast(h < (sp.h ?? k.h) ? "Added underneath, made " + cm(h) + " cm high to fit." : "Added underneath."); } catch (e) {}
+  }
   async function addUnderDesk(desk) {   // a cabinet tucked under the table, at the right-hand end, facing the same way
     await flushSave(); const f = fp(desk), D = DIR[desk.rot] || DIR[0], cx = f.x + f.w / 2, cz = f.z + f.d / 2, off = desk.w / 2 - 0.5 / 2 - 0.05;
     const u = { kind: "cabinet", name: "Cabinet under " + desk.name, w: 0.5, d: Math.min(0.5, Math.max(0.2, desk.d - 0.1)), h: Math.max(0.2, Math.min(0.7, desk.h - 0.05)), rot: desk.rot, levels: 2, color: null, elev: 0 };
     const g = fp(u); u.x = r2(cx + D.R[0] * off - g.w / 2); u.z = r2(cz + D.R[1] * off - g.d / 2);
-    try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); toast("Cabinet added under the desk."); } catch (e) {}
+    try { const id = await saveUnit(u); snapUndo({ kind: "add", id }); await load(); S.sel = { kind: "unit", id }; paintProps(); draw(); toast("Cabinet added underneath."); } catch (e) {}
   }
   const sx = x => (x - S.v.ox) * S.v.ppm, sy = z => (z - S.v.oz) * S.v.ppm;
   function handles(u) {   // resize grips on the selected unit, in screen pixels
@@ -184,14 +196,14 @@
       const c = centroid(r.points); g.fillStyle = "rgba(20,35,43,.55)"; g.font = "600 14px sans-serif"; g.textBaseline = "middle"; g.textAlign = "center"; g.fillText(r.name, sx(c[0]), sy(c[1])); g.font = "11px sans-serif"; g.fillText(r2(area(r.points)) + " m²", sx(c[0]), sy(c[1]) + 15); g.textAlign = "left";
     }
     let selUnit = null;
-    const raised = u => u.kind === "desk" || u.elev > 0, order = [...tops().filter(u => !raised(u)), ...tops().filter(raised)];
+    const raised = u => isTable(u) || u.elev > 0, order = [...tops().filter(u => !raised(u)), ...tops().filter(raised)];
     for (const u of order) {
       const f = fp(u), x = sx(f.x), y = sy(f.z), w = f.w * p, h = f.d * p, sel = S.sel && S.sel.kind === "unit" && S.sel.id === u.id, n = contents(u).length, col = colorOf(u), over = raised(u), lt = over ? true : light(col);
       if (sel) selUnit = u;
-      g.fillStyle = col; g.globalAlpha = over ? .5 : .94; g.fillRect(x, y, w, h); g.globalAlpha = 1; g.strokeStyle = sel ? "#F2C200" : "#14232B"; g.lineWidth = sel ? 4 : 1.5; if (over && !sel) g.setLineDash([7, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]);
+      g.fillStyle = col; g.globalAlpha = over ? .5 : .94; g.fillRect(x, y, w, h); g.globalAlpha = 1; const bad = clashes(u).length > 0; g.strokeStyle = sel ? "#F2C200" : bad ? "#B83A26" : "#14232B"; g.lineWidth = sel ? 4 : bad ? 3 : 1.5; if (over && !sel) g.setLineDash([7, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]);
       g.strokeStyle = lt ? "#14232B" : "#fff"; g.lineWidth = 3; g.beginPath();   // the front edge
       if (u.rot === 0) { g.moveTo(x + 3, y + h - 2); g.lineTo(x + w - 3, y + h - 2); } else if (u.rot === 90) { g.moveTo(x + 2, y + 3); g.lineTo(x + 2, y + h - 3); } else if (u.rot === 180) { g.moveTo(x + 3, y + 2); g.lineTo(x + w - 3, y + 2); } else { g.moveTo(x + w - 2, y + 3); g.lineTo(x + w - 2, y + h - 3); } g.stroke();
-      g.save(); g.beginPath(); g.rect(x + 3, y + 3, w - 6, h - 6); g.clip(); g.fillStyle = lt ? "#14232B" : "#fff"; g.font = "600 12px sans-serif"; g.textBaseline = "top"; g.fillText(u.name + (u.elev > 0 && u.kind !== "desk" ? " ↑" + cm(u.elev) : ""), x + 6, y + 6); if (n && h > 34) { g.font = "11px sans-serif"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x + 6, y + 21); } g.restore();
+      g.save(); g.beginPath(); g.rect(x + 3, y + 3, w - 6, h - 6); g.clip(); g.fillStyle = lt ? "#14232B" : "#fff"; g.font = "600 12px sans-serif"; g.textBaseline = "top"; g.fillText(u.name + (u.elev > 0 && !isTable(u) ? " ↑" + cm(u.elev) : ""), x + 6, y + 6); if (n && h > 34) { g.font = "11px sans-serif"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x + 6, y + 21); } g.restore();
     }
     if (selRoom) { edgeLengths(g, selRoom.points, true); selRoom.points.forEach(q => { g.fillStyle = "#fff"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.fillRect(sx(q[0]) - 6, sy(q[1]) - 6, 12, 12); g.strokeRect(sx(q[0]) - 6, sy(q[1]) - 6, 12, 12); }); }
     if (selUnit) {
@@ -295,6 +307,13 @@
     if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); addUnit(u.kind, u); return; }
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeUnit(u); }
   }
+  /* choose which side is the front without moving the shape on the plan: width and depth swap when the front moves to a short side */
+  const FRONT_ROT = { down: 0, left: 90, up: 180, right: 270 };
+  function setFront(u, dir) {
+    const r = FRONT_ROT[dir]; if (r == null || r === u.rot) return;
+    flushSave(); snapUnit(u); if ((r % 180) !== (u.rot % 180)) { const w = u.w; u.w = u.d; u.d = w; } u.rot = r;
+    saveUnit(u).catch(() => {}); paintProps(); draw();
+  }
   function turn(u, by) {   // turn about the centre so it stays in place
     flushSave(); snapUnit(u); const f = fp(u), cx = f.x + f.w / 2, cz = f.z + f.d / 2; u.rot = (u.rot + by + 360) % 360; const g = fp(u); u.x = r2(cx - g.w / 2); u.z = r2(cz - g.d / 2);
     saveUnit(u).catch(() => {}); paintProps(); draw();
@@ -313,8 +332,8 @@
     g.fillStyle = "#C2CBD0"; g.fillRect(0, y1, W, 2);
     const ink = lt ? "#14232B" : "#fff"; g.textBaseline = "middle";
     if (ge > 4) { g.strokeStyle = "#8A99A0"; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(x0 + bw / 2, yb); g.lineTo(x0 + bw / 2, y1); g.stroke(); g.setLineDash([]); g.fillStyle = "#47585F"; g.font = "11px sans-serif"; g.textAlign = "left"; g.fillText(cm(u.elev) + " cm up", x0 + bw / 2 + 6, (yb + y1) / 2); }
-    if (u.kind === "desk") {
-      const t = Math.max(5, 0.035 * k), lw = Math.max(5, 0.05 * k); g.fillStyle = col; g.fillRect(x0, y0, bw, t); g.fillRect(x0 + 3, y0 + t, lw, bh - t); g.fillRect(x0 + bw - 3 - lw, y0 + t, lw, bh - t); g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x0, y0, bw, t);
+    if (isTable(u)) {
+      const t = Math.max(5, (u.kind === "bench" ? 0.05 : 0.035) * k), lw = Math.max(5, 0.05 * k); g.fillStyle = col; g.fillRect(x0, y0, bw, t); g.fillRect(x0 + 3, y0 + t, lw, bh - t); g.fillRect(x0 + bw - 3 - lw, y0 + t, lw, bh - t); g.strokeStyle = "#14232B"; g.lineWidth = 1.2; g.strokeRect(x0, y0, bw, t);
     } else if (u.kind === "rack") {
       const L = u.levels, lh = bh / L, T = Math.max(3, 0.03 * k); g.strokeStyle = "#14232B"; g.lineWidth = 1.2;
       g.fillStyle = col; for (let i = 0; i <= L; i++) g.fillRect(x0, i === L ? y0 : yb - lh * i - T, bw, T); g.fillRect(x0, y0, 4, bh); g.fillRect(x0 + bw - 4, y0, 4, bh);
@@ -326,11 +345,11 @@
       const L = u.kind === "bench" ? 1 : u.levels;
       for (let i = 0; i < L; i++) {
         const yb2 = yb - bh * i / L, yt = yb - bh * (i + 1) / L; if (i) { g.beginPath(); g.moveTo(x0 + 2, yb2); g.lineTo(x0 + bw - 2, yb2); g.stroke(); }
-        if (bh / L > 12) { g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, (yb2 + yt) / 2); const n = itemsAt(u.id, i + 1).length; if (n) { g.textAlign = "right"; g.fillText(n + " item" + (n > 1 ? "s" : ""), x0 + bw - 5, (yb2 + yt) / 2); } }
+        if (bh / L > 12) { g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, (yb2 + yt) / 2); const n = itemsAt(u.id, i + 1).length; if (n) { g.textAlign = "right"; g.fillText(bw > 90 ? n + " item" + (n > 1 ? "s" : "") : String(n), x0 + bw - 5, (yb2 + yt) / 2); } }
       }
     }
     g.fillStyle = "#14232B"; g.textAlign = "center"; g.font = "600 11px sans-serif"; g.fillText(cm(u.w) + " cm wide", x0 + bw / 2, y0 - 9);
-    g.save(); g.translate(x0 - 14, (y0 + yb) / 2); g.rotate(-Math.PI / 2); g.fillText(cm(u.h) + (u.kind === "desk" ? " cm table top" : " cm high"), 0, 0); g.restore();
+    g.save(); g.translate(x0 - 14, (y0 + yb) / 2); g.rotate(-Math.PI / 2); g.fillText(cm(u.h) + (isTable(u) ? " cm table top" : " cm high"), 0, 0); g.restore();
   }
   function paintSizeInputs(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uW", cm(u.w)); s("uD", cm(u.d)); s("uH", cm(u.h)); paintFront(u); paintPos(u); }
   function paintPos(u) { const s = (id, v) => { const el = $("#" + id); if (el && document.activeElement !== el) el.value = v; }; s("uX", r2(u.x)); s("uZ", r2(u.z)); }
@@ -350,7 +369,7 @@
     const u = s && s.kind === "unit" ? unit(s.id) : null;
     if (!u) { el.innerHTML = `<h2>Your space</h2><p>${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"}, ${tops().length} unit${tops().length === 1 ? "" : "s"}.</p><p class="hint">Use <strong>Room: rectangle</strong> or <strong>Room: corners</strong> to draw a room. Use the <strong>Add</strong> buttons for shelves, cabinets, wall cabinets, a PC desk or a rack. Click one to change its size, height, levels and colour. Click the same spot again to pick what is underneath, such as a cabinet under a desk.</p>`; return; }
     if (u.kind === "box" && parentOf(u)) return boxProps(u, el);
-    const its = contents(u), rm = roomOf(u), col = colorOf(u), ro = !state.user, desk = u.kind === "desk", rack = u.kind === "rack";
+    const its = contents(u), rm = roomOf(u), col = colorOf(u), ro = !state.user, desk = isTable(u), rack = u.kind === "rack";
     const types = Object.entries(KINDS).filter(([k]) => k !== "box").map(([k, v]) => `<option value="${k}" ${k === u.kind ? "selected" : ""}>${v.label}</option>`).join("");
     el.innerHTML = PSTYLE + `<fieldset style="border:0;padding:0;margin:0" ${ro ? "disabled" : ""}>
       ${ro ? `<p class="status-line err" style="margin-top:0">Sign in (top right) to edit.</p>` : ""}
@@ -365,7 +384,10 @@
       ${desk ? "" : `<fieldset class="pgrp"><legend>${u.kind === "drawers" ? "Drawers" : "Levels"}</legend>
         <div class="row" style="align-items:center"><button type="button" class="btn sec mini" id="uLm" aria-label="One less">−</button><input id="uL" type="number" step="1" min="1" max="30" value="${u.levels}" style="width:70px;text-align:center" aria-label="Levels"><button type="button" class="btn sec mini" id="uLp" aria-label="One more">+</button><span class="hint" style="margin:0">numbered from the bottom up</span></div></fieldset>`}
       <fieldset class="pgrp"><legend>Front view</legend><canvas id="uFront" style="width:100%;height:170px;display:block;background:#fff;border:1px solid var(--line)"></canvas></fieldset>
-      ${desk ? `<fieldset class="pgrp"><legend>Under the desk</legend><p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. The desk shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this desk</button></fieldset>` : ""}
+      ${(() => { const c = clashes(u); return c.length ? `<p class="status-line err" style="margin:8px 0 0">Overlaps ${esc(c.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""; })()}
+      ${!desk && !rack && u.elev > 0 ? `<fieldset class="pgrp"><legend>Under this cabinet</legend><p class="hint" style="margin:0 0 8px">There is ${cm(u.elev)} cm under it. Put something below, such as a workbench, drawers or a cabinet. It is made to fit, back to the same wall.</p>
+        <div class="row" style="align-items:flex-end"><div class="field" style="min-width:130px"><label for="uUnderKind">Put underneath</label><select id="uUnderKind" class="sel"><option value="bench">Workbench</option><option value="drawers">Drawer unit</option><option value="cabinet">Cabinet</option><option value="shelf">Shelf</option></select></div><button type="button" class="btn sec" id="uUnderAdd">Add underneath</button></div></fieldset>` : ""}
+      ${desk ? `<fieldset class="pgrp"><legend>Under the ${u.kind === "bench" ? "bench" : "desk"}</legend><p class="hint" style="margin:0 0 8px">Cabinets and drawers can sit under the table top. It shows see-through on the plan; click the same spot again to pick what is under it.</p><button type="button" class="btn sec" id="uUnder">Add a cabinet under this ${u.kind === "bench" ? "bench" : "desk"}</button></fieldset>` : ""}
       ${rack ? `<fieldset class="pgrp"><legend>Boxes on this rack</legend>
         ${kids(u).length ? Array.from({ length: u.levels }, (_, i) => u.levels - i).map(lv => { const bs = boxLayout(u).filter(e => e.L === lv); return bs.length ? `<div><strong style="font-size:14px">Level ${lv}</strong>${bs.map(e => `<button type="button" class="bxr ${e.over ? "over" : ""}" data-box="${e.b.id}"><span>${esc(e.b.name)}</span><span class="hint" style="margin:0">${cm(e.b.w)}×${cm(e.b.d)}×${cm(e.b.h)} cm${itemsAt(e.b.id).length ? " · " + itemsAt(e.b.id).length + " item" + (itemsAt(e.b.id).length > 1 ? "s" : "") : ""}${e.over ? " · does not fit" : ""}</span></button>`).join("")}</div>` : ""; }).join("") : `<p class="hint" style="margin:0 0 8px">No boxes yet. Add one, then say which items are in it on Setup, Place items.</p>`}
         <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="min-width:90px;max-width:130px"><label for="bxL">Put on level</label><select id="bxL" class="sel">${Array.from({ length: u.levels }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></div><button type="button" class="btn" id="bxAdd">Add a box</button></div></fieldset>` : ""}
@@ -376,7 +398,9 @@
         <div class="row"><div class="field" style="min-width:70px"><label for="uX">Left edge (m)</label><input id="uX" type="number" step="0.05" value="${r2(u.x)}"></div><div class="field" style="min-width:70px"><label for="uZ">Top edge (m)</label><input id="uZ" type="number" step="0.05" value="${r2(u.z)}"></div>
           ${desk ? "" : `<div class="field" style="min-width:90px"><label for="uE">Off the floor (cm)</label><input id="uE" type="number" step="5" min="0" max="500" value="${cm(u.elev)}"></div>`}</div>
         <div class="row" style="margin-top:8px;align-items:center"><button type="button" class="btn sec" id="uRotL" aria-label="Turn left">↺ Turn</button><button type="button" class="btn sec" id="uRot" aria-label="Turn right">Turn ↻</button><button type="button" class="btn sec" id="uWall">Snap to wall</button>${desk ? "" : `<button type="button" class="btn sec" id="uMount">Mount on wall</button>`}</div>
-        <p class="hint">Front faces ${facing(u.rot)} on the plan (white edge). Snap to wall puts the back against the nearest straight wall.${desk ? "" : " Mount on wall also lifts it 120 cm off the floor."}</p></fieldset>
+        <div style="margin-top:10px"><label>Front faces (white edge on the plan)</label>
+          <div class="row" style="gap:6px;align-items:center" role="group" aria-label="Which side is the front">${[["up", "↑ Up"], ["left", "← Left"], ["down", "↓ Down"], ["right", "→ Right"]].map(([d, l]) => `<button type="button" class="btn ${facing(u.rot) === d ? "" : "sec"}" data-front="${d}" aria-pressed="${facing(u.rot) === d}" style="padding:6px 10px">${l}</button>`).join("")}</div>
+          <p class="hint">Picking a side keeps the shape where it is and moves the front to that edge. Width is measured across the front. Snap to wall puts the back against the nearest straight wall.${desk ? "" : " Mount on wall also lifts it 120 cm off the floor."}</p></div></fieldset>
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
       <p class="hint" style="margin-top:10px">${its.length ? its.length + " item" + (its.length > 1 ? "s" : "") + " stored here: " + esc(its.slice(0, 6).map(itemName).join(", ")) + (its.length > 6 ? "…" : "") : "Nothing stored here yet. Place items under Setup, Place items."}</p>`;
@@ -387,7 +411,7 @@
     $("#uX").oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || isNaN(v)) return; change(() => { u.x = r2(v); }); };
     $("#uZ").oninput = e => { const v = Number(e.target.value); if (e.target.value === "" || isNaN(v)) return; change(() => { u.z = r2(v); }); };
     $("#uName").oninput = e => { const v = e.target.value.trim(); if (v) change(() => { u.name = v; }); };
-    $("#uKind").onchange = e => { change(() => { u.kind = e.target.value; if (u.kind === "desk") { u.levels = 1; u.elev = 0; } }, true); paintProps(); };
+    $("#uKind").onchange = e => { change(() => { u.kind = e.target.value; if (isTable(u)) { u.levels = 1; u.elev = 0; } }, true); paintProps(); };
     $("#uPre").onchange = e => { if (!e.target.value) return; const [a, b, c] = e.target.value.split(",").map(Number); change(() => { u.w = a / 100; u.d = b / 100; u.h = c / 100; }, true); paintSizeInputs(u); e.target.value = ""; };
     if ($("#uL")) { const setL = v => { v = clamp(Math.round(v) || 1, 1, 30); $("#uL").value = v; change(() => { u.levels = v; }); if (rack) setTimeout(paintProps, 700); };
       $("#uL").oninput = e => { if (e.target.value) setL(Number(e.target.value)); }; $("#uLm").onclick = () => setL(u.levels - 1); $("#uLp").onclick = () => setL(u.levels + 1); }
@@ -395,9 +419,11 @@
     $("#uCol").oninput = e => change(() => { u.color = e.target.value.toUpperCase(); });
     $("#uCol").onchange = () => paintProps();
     $("#uColDef").onclick = () => { change(() => { u.color = null; }, true); paintProps(); };
+    el.querySelectorAll("[data-front]").forEach(b => b.onclick = () => requireAuth(() => setFront(u, b.dataset.front)));
     $("#uRot").onclick = () => turn(u, 90); $("#uRotL").onclick = () => turn(u, -90);
     $("#uWall").onclick = () => requireAuth(async () => { await flushSave(); if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} paintProps(); draw(); } });
     if ($("#uMount")) $("#uMount").onclick = () => requireAuth(async () => { await flushSave(); const before = { ...u }; if (!u.elev) u.elev = 1.2; if (snapToWall(u)) { try { await saveUnit(u); } catch (e) {} } else { Object.assign(u, before); snapUnit(u); u.elev = before.elev || 1.2; try { await saveUnit(u); } catch (e) {} } paintProps(); draw(); });
+    if ($("#uUnderAdd")) $("#uUnderAdd").onclick = () => requireAuth(() => addUnderUnit(u, $("#uUnderKind").value));
     if ($("#uUnder")) $("#uUnder").onclick = () => requireAuth(() => addUnderDesk(u));
     if ($("#bxAdd")) $("#bxAdd").onclick = () => requireAuth(() => addBox(u, Number($("#bxL").value)));
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.sel = { kind: "unit", id: b.dataset.box }; paintProps(); draw(); });
@@ -505,12 +531,14 @@
     for (const u of tops()) {
       const f = fp(u), cx = f.x + f.w / 2, cz = f.z + f.d / 2, e0 = u.elev || 0, D = DIR[u.rot] || DIR[0], alongX = D.R[0] !== 0, m = matOf(u);
       const wd = (lr, lf) => alongX ? [lr, lf] : [lf, lr];   // a length along the front and a depth, as world x and z sizes
-      if (u.kind === "desk") {
-        const t = 0.035, lg = 0.05, ins = 0.04; addBox3(u, m, cx, e0 + u.h - t / 2, cz, f.w, t, f.d);
+      if (isTable(u)) {
+        const bench = u.kind === "bench", t = bench ? 0.05 : 0.035, lg = bench ? 0.07 : 0.05, ins = bench ? 0.05 : 0.04; addBox3(u, m, cx, e0 + u.h - t / 2, cz, f.w, t, f.d);
         for (const sr of [-1, 1]) for (const sf of [-1, 1]) { const px = cx + D.R[0] * sr * (u.w / 2 - ins) + D.F[0] * sf * (u.d / 2 - ins), pz = cz + D.R[1] * sr * (u.w / 2 - ins) + D.F[1] * sf * (u.d / 2 - ins); addBox3(u, m, px, e0 + (u.h - t) / 2, pz, lg, u.h - t, lg); }
+        if (!bench) {
         const dm = new T.MeshStandardMaterial({ color: 0x1b2328, roughness: .5 }), top = e0 + u.h;   // a monitor and keyboard so it reads as a PC desk
         const [mw, md] = wd(Math.min(0.55, u.w * 0.5), 0.04); addBox3(u, dm, cx + D.F[0] * (u.d / 2 - 0.14), top + 0.2, cz + D.F[1] * (u.d / 2 - 0.14), mw, 0.32, md, false);
         const [kw, kd] = wd(Math.min(0.42, u.w * 0.4), 0.14); addBox3(u, dm, cx - D.F[0] * 0.08, top + 0.01, cz - D.F[1] * 0.08, kw, 0.02, kd, false);
+        }
       } else if (u.kind === "rack") {
         const T3 = 0.03, lg = 0.04, lh = u.h / u.levels;
         for (let i = 0; i <= u.levels; i++) addBox3(u, m, cx, e0 + (i === u.levels ? u.h - T3 / 2 : i * lh + T3 / 2), cz, f.w, T3, f.d);

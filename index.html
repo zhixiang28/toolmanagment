@@ -1199,7 +1199,7 @@ function reportDialog(kind, item) {
 
 /* ---------- vision (webcam) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "42";   // bump when vision.js changes so browsers do not keep an old copy
+const VISION_V = "43";   // bump when vision.js changes so browsers do not keep an old copy
 let visionLoading = null;
 function ensureVision() {   // one shared load, so opening Vision and switching tabs quickly cannot load the code twice
   if (window.VisionUI) return Promise.resolve();
@@ -1254,7 +1254,7 @@ async function onMainClick(ev) {
     else if (a === "loan-return") requireAuth(() => returnLoan(el.dataset.loan));
     else if (a === "loc-open") locSheet(el.dataset.id);
     else if (a === "qr-one") qrLabels([el.dataset.id]);
-    else if (a === "qr-all") qrLabels(allPlaceIds());
+    else if (a === "qr-all") qrChooser();
     else if (a === "loc-3d") { state.spaceFocusUnit = el.dataset.id; if ($("#dlg").open) $("#dlg").close(); setTab("s3d"); }
     else if (a === "count-item") { state.countItem = el.dataset.id; if ($("#dlg").open) $("#dlg").close(); setTab("count"); }
     else if (a === "stockf") { state.stockF = el.dataset.f; renderStock(); labelTables(); }
@@ -1375,6 +1375,20 @@ function openDeepLink() {
 let qrLib = null;
 function loadQr() { return qrLib || (qrLib = new Promise((res, rej) => { if (window.qrcode) return res(window.qrcode); const el = document.createElement("script"); el.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"; el.onload = () => res(window.qrcode); el.onerror = () => { qrLib = null; rej(new Error("Could not load the QR code maker. Check your connection and try again.")); }; document.head.appendChild(el); })); }
 const qrSvg = (qr, text) => { const q = qr(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); };
+/* pick which rooms to print labels for */
+function qrChooser() {
+  const units = state.spaceUnits || [], rooms = state.spaceRooms || []; if (!units.length) { toast("Draw your shelves in the space plan first, then each gets a QR label."); return; }
+  const groups = [...rooms.map(r => ({ id: r.id, name: r.name })), { id: "", name: "Not in a room" }].map(g => ({ ...g, us: units.filter(u => (roomOfUnit(u)?.id || "") === g.id) })).filter(g => g.us.length);
+  const d = $("#dlg"); state.sheet = null; state.loc = null;
+  d.innerHTML = `<form id="qrPick"><div class="dlg-h"><h2>Print QR labels</h2></div><div class="dlg-b"><p style="margin:0">Which rooms do you want labels for?</p>
+    <div style="display:grid;gap:8px">${groups.map(g => `<label style="display:flex;gap:10px;align-items:center;border:2px solid var(--ink);padding:10px 12px;cursor:pointer;margin:0;font-weight:600"><input type="checkbox" class="qrRoom" value="${esc(g.id)}" checked style="width:20px;height:20px"><span style="flex:1">${esc(g.name)}</span><span class="hint" style="margin:0;font-weight:400">${g.us.length} place${g.us.length > 1 ? "s" : ""}</span></label>`).join("")}</div>
+    <label style="display:flex;gap:10px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="qrBoxes" checked style="width:20px;height:20px"> Include boxes</label></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="qrNone">Clear</button><button type="button" class="btn sec" id="qrEvery">Select all</button><button type="submit" class="btn" id="qrGo">Make labels</button></div></form>`;
+  if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; };
+  const boxes = () => [...d.querySelectorAll(".qrRoom")], count = () => { const sel = boxes().filter(b => b.checked).map(b => b.value), n = groups.filter(g => sel.includes(g.id)).reduce((a, g) => a + g.us.filter(u => $("#qrBoxes").checked || !isBox(u)).length, 0); $("#qrGo").textContent = n ? "Make " + n + " label" + (n > 1 ? "s" : "") : "Make labels"; $("#qrGo").disabled = !n; };
+  d.querySelectorAll("input").forEach(i => i.onchange = count); $("#qrNone").onclick = () => { boxes().forEach(b => b.checked = false); count(); }; $("#qrEvery").onclick = () => { boxes().forEach(b => b.checked = true); count(); }; count();
+  $("#qrPick").onsubmit = ev => { ev.preventDefault(); const sel = boxes().filter(b => b.checked).map(b => b.value), inc = $("#qrBoxes").checked; qrLabels(groups.filter(g => sel.includes(g.id)).flatMap(g => g.us.filter(u => inc || !isBox(u)).sort((a, b) => placeOf(a).localeCompare(placeOf(b)) || a.name.localeCompare(b.name))).map(u => u.id)); };
+}
 async function qrLabels(ids) {
   let qr; try { qr = await loadQr(); } catch (e) { toast(e.message); return; }
   const us = ids.map(unitById).filter(Boolean); if (!us.length) { toast("Draw your shelves in the space plan first, then each gets a QR label."); return; }

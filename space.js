@@ -806,7 +806,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if (u && S.multi.length > 1) return groupProps(el, group());
     if (!u) { el.innerHTML = `<h2>Your space</h2><p class="hint">${S.rooms.length} room${S.rooms.length === 1 ? "" : "s"} · ${tops().length} unit${tops().length === 1 ? "" : "s"}</p>
       <ol style="padding-left:20px;display:grid;gap:6px;margin:0 0 10px"><li>Draw a room with <strong>Room: rectangle</strong> or <strong>Room: corners</strong>.</li><li>Press <strong>＋ Add</strong> for a shelf, cabinet, wall cabinet, drawers, workbench, PC desk or rack.</li><li>Drag it in the <strong>top view</strong> to place it on the floor, and in the <strong>front view</strong> to set how high it is.</li></ol>
-      <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>${tops().length ? `<button type="button" class="btn sec" id="qrAll">Print QR labels for every place</button>` : ""}`; if ($("#qrAll")) $("#qrAll").onclick = () => qrLabels(S.units.map(x => x.id)); return; }
+      <p class="hint">Click a unit to edit its size, levels, colour and position. Click the same spot again to pick what is behind or underneath.</p>${tops().length ? `<button type="button" class="btn sec" id="qrAll">Print QR labels…</button>` : ""}`; if ($("#qrAll")) $("#qrAll").onclick = () => qrChooser(); return; }
     if (u.kind === "box" && parentOf(u)) return boxProps(u, el);
     const its = contents(u), rm = roomOf(u), col = colorOf(u), ro = !state.user, desk = isTable(u), rack = u.kind === "rack";
     const types = Object.entries(KINDS).filter(([k]) => k !== "box").map(([k, v]) => `<option value="${k}" ${k === u.kind ? "selected" : ""}>${v.label}</option>`).join("");

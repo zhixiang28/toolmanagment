@@ -1114,26 +1114,30 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     S.sel = asset ? (asset.unit_id ? { kind: "unit", id: asset.unit_id } : null) : S.hl ? { kind: "unit", id: S.hl } : null; S.focusItem = null; paintSide();
   }
   /* glide the camera to a spot, standing in front of the thing (th is the angle around it, ph how high we look from) */
-  function flyTo(g) {
-    const k = S.t, C = k.C, from = { tx: C.tx, ty: C.ty, tz: C.tz, dist: C.dist, th: C.th, ph: C.ph }, t0 = performance.now(), id = k.fly = (k.fly || 0) + 1;
-    let dth = g.th - from.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth));   // the short way round
+  function flyTo(g, viaOverview) {
+    const k = S.t, C = k.C, cur = () => ({ tx: C.tx, ty: C.ty, tz: C.tz, dist: C.dist, th: C.th, ph: C.ph }), t0 = performance.now(), id = k.fly = (k.fly || 0) + 1, keys = [cur()];
+    if (viaOverview) { const bd = bounds(), w = bd.x1 - bd.x0, d = bd.z1 - bd.z0, ov = { tx: (bd.x0 + bd.x1) / 2, tz: (bd.z0 + bd.z1) / 2, ty: 0.4, dist: Math.max(w * 0.9, d * 1.5, 4) + 2, th: g.th, ph: 0.95 }; if (C.dist < ov.dist * 0.85 || Math.hypot(C.tx - ov.tx, C.tz - ov.tz) > 1) keys.push(ov); }   // pull back to see the whole space first
+    keys.push(g); const segs = keys.length - 1, dur = segs > 1 ? 1900 : 750;
+    const lerp = (A, B, e) => { let dth = B.th - A.th; dth = Math.atan2(Math.sin(dth), Math.cos(dth)); return { tx: A.tx + (B.tx - A.tx) * e, ty: A.ty + (B.ty - A.ty) * e, tz: A.tz + (B.tz - A.tz) * e, dist: A.dist + (B.dist - A.dist) * e, th: A.th + dth * e, ph: A.ph + (B.ph - A.ph) * e }; };
+    const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     const step = now => {
-      if (!S.t || k.fly !== id) return; const t = Math.min(1, (now - t0) / 650), e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      C.tx = from.tx + (g.tx - from.tx) * e; C.ty = from.ty + (g.ty - from.ty) * e; C.tz = from.tz + (g.tz - from.tz) * e; C.dist = from.dist + (g.dist - from.dist) * e; C.th = from.th + dth * e; C.ph = from.ph + (g.ph - from.ph) * e; camUpdate();
-      if (t < 1) requestAnimationFrame(step);
+      if (!S.t || k.fly !== id) return; const t = Math.min(1, (now - t0) / dur);
+      // a short pull-back, a brief look at the whole space, then a long glide in
+      const w = segs > 1 ? (t < .35 ? [0, t / .35] : [1, (t - .35) / .65]) : [0, t], i = Math.min(w[0], segs - 1), v = lerp(keys[i], keys[i + 1], ease(Math.min(1, w[1])));
+      Object.assign(C, v); camUpdate(); if (t < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }
-  function focusUnit(uid) {
+  function focusUnit(uid, overview) {
     const k = S.t; if (!k) return; const ae = String(uid).startsWith("a:") ? assetEntry(String(uid).slice(2)) : null;
     const front = u => { const D = DIR[(rootOf(u) || u).rot] || DIR[0]; return Math.atan2(-D.F[1], -D.F[0]); };   // camera on the side the unit faces
-    if (ae) { const t = unit((state.assets || []).find(x => "a:" + x.id === "a:" + String(uid).slice(2))?.unit_id); flyTo({ tx: ae.cx, tz: ae.cz, ty: ae.y + ae.h / 2, dist: Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3), th: t ? front(t) : k.C.th, ph: 1.2 }); return; }
+    if (ae) { const t = unit((state.assets || []).find(x => "a:" + x.id === "a:" + String(uid).slice(2))?.unit_id); flyTo({ tx: ae.cx, tz: ae.cz, ty: ae.y + ae.h / 2, dist: Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3), th: t ? front(t) : k.C.th, ph: 1.2 }, overview); return; }
     const u = unit(uid); if (!u) return; const a = anchor(u);
-    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 });
+    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 }, overview);
   }
   function focusItem(kind, id) {
     const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Place items."); return; }
-    S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl); paintSide();
+    S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl, true); paintSide();
   }
   /* a shelf, cabinet or rack as a small picture: one row per level, top first, a coloured tag for each box. Tap a tag to open what is inside below it. */
   function rackBody(u, itemRows, addBtn, boxBody) {

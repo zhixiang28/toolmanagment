@@ -55,6 +55,7 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .subtabs button{background:none;border:1px solid #5C7380;color:#C7D3D8;padding:4px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;font-size:14px}
 .subtabs button[aria-current=page]{background:#fff;border-color:#fff;color:var(--ink);font-weight:600}
 #pgseg:empty{display:none}.pgseg{max-width:1100px;margin:var(--s3) auto 0;padding:0 var(--s4);display:flex;gap:0}.pgseg button{background:#fff;border:2px solid var(--ink);margin-left:-2px;padding:6px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}.pgseg button:first-child{margin-left:0}.pgseg button[aria-selected=true]{background:var(--ink);color:#fff}
+.bagsvg{width:100%;height:auto;display:block;max-height:360px;margin:4px 0}dialog.wide{max-width:980px}.bgwrap{display:flex;gap:var(--s4);align-items:flex-start;flex-wrap:wrap;margin-top:var(--s3)}.bgwrap canvas{touch-action:none;max-width:100%;border:1px solid var(--line)}.bgsel{flex:1;min-width:220px}
 .bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq[hidden]{display:none}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
 .subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
 .linkname{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(127,127,127,.45);text-underline-offset:3px}
@@ -542,7 +543,7 @@ async function refreshAll() {
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
       guard(sb.from("space_rooms").select("id,name,points").eq("active", true)),
-      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level").eq("active", true)),
+      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level,layout").eq("active", true)),
       guard(sb.from("assets").select("*").eq("active", true).order("name")),
       guard(sb.from("item_loans").select("*").order("taken_at", { ascending: false }).limit(300)),
       guard(sb.from("weigh_units").select("*").eq("active", true).order("name")),
@@ -737,8 +738,8 @@ const unitLabel = u => {
 };
 const isBox = u => u && u.kind === "box";
 const isTableUnit = u => u && (u.kind === "desk" || u.kind === "bench");
-const slotWord = u => isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
-const levelOpts = (u, lv) => u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
+const slotWord = u => u && u.kind === "bag" ? "Where" : isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
+const levelOpts = (u, lv) => u && u.kind === "bag" ? `<option value="1" selected>in the bag</option>` : u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
 function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { const u = (state.spaceUnits || []).find(x => x.id === us.value); $("#" + k + "_lvl").innerHTML = levelOpts(u, 1); const l = $("#" + k + "_lvlL"); if (l) l.textContent = slotWord(u); }; }
 async function savePlace(kind, id, k, it) {
   const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
@@ -1239,7 +1240,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "51";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "52";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1260,7 +1261,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
+  return unitLabel(u) + (u.kind === "bag" ? "" : isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 
@@ -1393,6 +1394,16 @@ function addStockSheet(id) {
   $("#asForm").onsubmit = ev => { ev.preventDefault(); if (!q()) return; requireAuth(async () => { try { const n = await guard(rpcAuth("toolscale_consumable_add", { p_id: id, p_qty: q() })); await refreshAll(); toast(`Added ${q()}. Now ${n} on hand.`); afterLoan(); } catch (e) {} }); };
   setTimeout(() => { $("#as_q")?.focus(); $("#as_q")?.select(); }, 50);
 }
+/* a tool bag's layout as a picture: each slot with its tool, the one you are looking for in yellow */
+function bagSvg(u, hi) {
+  const W = Math.round(Number(u.w) * 100), H = Math.round(Number(u.d) * 100), L = Array.isArray(u.layout) ? u.layout : []; if (!L.length) return "";
+  const tl = id => state.tools.find(t => t.id === id);
+  return `<svg class="bagsvg" viewBox="-1 -1 ${W + 2} ${H + 6}" role="img" aria-label="Tool layout of ${esc(u.name)}"><rect x="0" y="0" width="${W}" height="${H}" rx="1.5" fill="#2A3439"/>${L.map(s => {
+    const t = s.tool && tl(s.tool), on = !!hi && s.tool === hi, out = t && t.status === "out", nm = (s.label || (t ? t.name : "")) + (out ? " (out)" : ""), tall = s.h > s.w * 1.4, long = tall ? s.h : s.w, short = tall ? s.w : s.h;
+    const fs = Math.max(1, Math.min(3.2, short * 0.5, long / Math.max(3, nm.length) * 1.8)), cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+    return `<g><rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="0.6" fill="${on ? "#F2C200" : out ? "#5A2A22" : t ? "#3E6E86" : "#55636B"}" stroke="${on ? "#fff" : "#9DB0B8"}" stroke-width="${on ? 0.5 : 0.2}"${out ? ' stroke-dasharray="1 0.6"' : ""}/>${nm ? `<text x="${cx}" y="${cy}" font-size="${fs}" text-anchor="middle" dominant-baseline="central" fill="${on ? "#14232B" : "#fff"}" font-family="sans-serif" font-weight="600"${tall ? ` transform="rotate(-90 ${cx} ${cy})"` : ""}>${esc(nm)}</text>` : ""}</g>`;
+  }).join("")}<text x="${W / 2}" y="${H + 3.5}" font-size="2.4" text-anchor="middle" fill="#5B6B73" font-family="sans-serif" font-weight="600">FRONT</text></svg>`;
+}
 /* a place: shelf, cabinet, table or box, with everything in it. This is the page a QR code opens. */
 function placedAt(uid) { return allEntries().filter(x => x.it.unit_id === uid); }
 function locSheet(uid) {
@@ -1409,7 +1420,7 @@ function locSheet(uid) {
     if (single) return placedAt(p.id).map(row).join("") || `<div class="hint">Nothing here.</div>`;
     return Array.from({ length: n }, (_, i) => n - i).map(lv => { const html = group(lv); return `<div class="locgrp"><div class="locgh">${tbl ? (lv === 2 ? "Under the table" : "On the top") : sections ? "Section " + lv : "Level " + lv}</div>${html || `<div class="hint" style="margin:0">Empty</div>`}</div>`; }).join("");
   };
-  const body = isBox(u) && !(Number(u.levels) > 1) ? slots(u) + subs(u.id).map(c => boxHtml(c, 0)).join("") : slots(u) + (isBox(u) ? subs(u.id).map(c => boxHtml(c, 0)).join("") : "");
+  const body = u.kind === "bag" ? (bagSvg(u) || "") + (placedAt(u.id).map(row).join("") || `<div class="hint">Nothing in this bag yet.</div>`) : isBox(u) && !(Number(u.levels) > 1) ? slots(u) + subs(u.id).map(c => boxHtml(c, 0)).join("") : slots(u) + (isBox(u) ? subs(u.id).map(c => boxHtml(c, 0)).join("") : "");
   const out = openLoans().filter(l => { const x = allEntries().find(e => e.kind === l.kind && e.it.id === l.item_id); const holder = x && x.it.unit_id; let p = holder && unitById(holder), n = 0; while (p && n++ < 10) { if (p.id === uid) return true; p = p.parent_id && unitById(p.parent_id); } return false; });
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${esc(placeOf(u))}</div></div><div class="dlg-b">
     ${out.length ? `<div class="banner info" style="margin:0"><span>${out.length} item${out.length > 1 ? "s" : ""} from here taken out: ${out.map(l => esc(l.item_name) + " (" + esc(l.person) + ")").join(", ")}.</span></div>` : ""}

@@ -54,7 +54,12 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .subtabs:empty{display:none}
 .subtabs button{background:none;border:1px solid #5C7380;color:#C7D3D8;padding:4px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;font-size:14px}
 .subtabs button[aria-current=page]{background:#fff;border-color:#fff;color:var(--ink);font-weight:600}
+.btn.scanbtn{padding:4px 14px;font-size:15px;background:var(--hivis);color:var(--ink);border-color:var(--hivis)}
+.scanv{position:relative;background:#000;aspect-ratio:4/3;width:100%;overflow:hidden}.scanv video{width:100%;height:100%;object-fit:cover;display:block}.scanv .aim{position:absolute;inset:18%;border:3px solid var(--hivis);border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.lvpick{display:grid;gap:8px}.lvpick button{border:3px solid var(--ink);background:#fff;padding:14px;font-size:17px;font-weight:700;cursor:pointer;text-align:left}.lvpick button:hover{background:var(--ink);color:#fff}
 #pgseg:empty{display:none}.pgseg{max-width:1100px;margin:var(--s3) auto 0;padding:0 var(--s4);display:flex;gap:0}.pgseg button{background:#fff;border:2px solid var(--ink);margin-left:-2px;padding:6px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}.pgseg button:first-child{margin-left:0}.pgseg button[aria-selected=true]{background:var(--ink);color:#fff}
+.phbox img{width:100%;max-height:300px;object-fit:contain;background:#fff;border:1px solid var(--line);display:block;cursor:zoom-in}.phbox .row{margin-top:6px;gap:8px}
+.bagsvg{width:100%;height:auto;display:block;max-height:360px;margin:4px 0}dialog.wide{max-width:980px}.bgwrap{display:flex;gap:var(--s4);align-items:flex-start;flex-wrap:wrap;margin-top:var(--s3)}.bgwrap canvas{touch-action:none;max-width:100%;border:1px solid var(--line)}.bgsel{flex:1;min-width:220px}
 .bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq[hidden]{display:none}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
 .subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
 .linkname{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(127,127,127,.45);text-underline-offset:3px}
@@ -194,7 +199,7 @@ dialog::backdrop{background:rgba(20,35,43,.6)}
 code{background:#D9E0E3;padding:0 4px}
 @media (max-width:640px){
   .tablewrap{overflow:visible}
-  .cards4{grid-template-columns:1fr;gap:8px}.acard{display:grid;grid-template-columns:44px 1fr;align-items:center;column-gap:10px;row-gap:6px;padding:10px 12px}.acard .n{font-size:30px;grid-row:span 2}.acard .btn{margin:0;padding:6px 12px;font-size:14px;justify-self:start;grid-column:2}
+  .cards4{grid-template-columns:1fr;gap:8px}.acard{display:grid;grid-template-columns:44px 1fr;align-items:center;column-gap:10px;row-gap:6px;padding:10px 12px}.acard .n{font-size:30px;grid-row:span 2}.acard .btn{margin:0;padding:6px 12px;font-size:14px;justify-self:start;grid-column:2}.acard.sim{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;height:auto;padding:12px 14px}.acard.sim .btn{grid-column:auto}
   table.cards{border:0;background:none}
   table.cards thead{display:none}
   table.cards,table.cards tbody{display:block}
@@ -209,7 +214,7 @@ code{background:#D9E0E3;padding:0 4px}
 @media (max-width:560px){
   .hdr-in{flex-wrap:wrap;gap:var(--s2) var(--s3)}
   .brand{order:1}
-  #viewbtn{order:2}#authbtn{order:2}#installbtn{order:2}
+  .wide-only{display:none}.brand{font-size:21px}#scanbtn{order:2}#viewbtn{order:2}#authbtn{order:2}#installbtn{order:2}
   .state{order:4}
   .live{order:5;margin-left:auto}
   .log li{grid-template-columns:1fr;gap:var(--s1)}
@@ -267,7 +272,7 @@ const state = {
 /* Pages are grouped by the job you are doing, not by the hardware behind them */
 const SECTIONS = [
   ["home", "Home", [["home", "Overview"]]],
-  ["find", "Find", [["s3d", "Find"], ["splan", "Edit space"]]],
+  ["find", "Find", [["s3d", "Find"], ["together", "Keep together"], ["splan", "Edit space"]]],
   ["tools", "Tools", [["board", "Board"], ["activity", "Activity"], ["loans", "Loans", 1]]],
   ["stock", "Stock", [["stock", "On hand"], ["count", "Count"], ["history", "History"]]],
   ["orders", "Orders", [["reorder", "Order list"]]],
@@ -364,7 +369,7 @@ function renderSetup() {
 /* Viewing the board and marking tools in/out is open. Adding or editing tools, and scale calibration and settings, need a sign-in.
    Accounts are the MR Tracker accounts (email + 4-digit PIN). */
 const COMPANY_DOMAIN = "spacelogic.com.sg";
-function paintView() { const b = $("#viewbtn"); if (b) b.textContent = state.lite ? "Full view" : "Lite view"; document.body.classList.toggle("lite", state.lite); }
+function paintView() { const b = $("#viewbtn"); if (b) b.innerHTML = (state.lite ? "Full" : "Lite") + '<span class="wide-only"> view</span>'; document.body.classList.toggle("lite", state.lite); }
 function toggleView() {
   state.lite = !state.lite; try { localStorage.setItem("ts_view", state.lite ? "lite" : "full"); } catch (e) {}
   paintView(); toast(state.lite ? "Lite view: the space editor, scales and sorter setup are hidden. Tap Full view at the top to see them." : "Full view: every page is shown.");
@@ -456,6 +461,7 @@ function startApp() {
     <div class="state"><span class="dot off" id="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="live" aria-label="Live weight"><span class="v num" id="liveV">-</span><span class="u">g</span></div>
     <button class="linkbtn" id="installbtn" style="font-size:14px" hidden>Install app</button>
+    <button class="btn scanbtn" id="scanbtn" data-act="scan" title="Scan a QR label on an item or a place">Scan</button>
     <button class="linkbtn" id="viewbtn" style="font-size:14px" title="Lite view hides the space editor, scales and sorter setup"></button>
     <button class="linkbtn" id="authbtn" style="font-size:14px"></button>
   </div>
@@ -467,7 +473,7 @@ function startApp() {
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => { const s = SECTIONS.find(x => x[0] === b.dataset.sec), last = state.lastTab[s[0]]; setTab(last && shown(last) ? last : firstShown(s) || s[2][0][0]); });
   $("#brand").onclick = () => setTab("home");
   $("#installbtn").onclick = installApp; paintInstall();
-  $("#viewbtn").onclick = toggleView; paintView();
+  $("#viewbtn").onclick = toggleView; paintView(); $("#scanbtn").onclick = () => scanSheet({ mode: "any" });
   $("#authbtn").onclick = () => state.user ? signOut() : requireAuth(() => {});
   updateAuthBtn(); paintNav();
   $("#main").addEventListener("click", onMainClick);
@@ -517,7 +523,7 @@ function labelTables() {
 function renderTab() {
   if (window.DetectUI && !["detect", "label"].includes(state.tab)) DetectUI.stop();
   if (window.SpaceUI && !["splan", "s3d", "sitems"].includes(state.tab)) SpaceUI.stop();
-  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets, wunits: renderWunits, sorter: renderSorter })[state.tab](); renderBanner(); labelTables();
+  ({ home: renderHome, board: renderBoard, tools: renderTools, activity: renderActivity, scale: renderScale, stock: renderStock, count: renderCount, items: renderItems, history: renderHistory, reorder: renderReorder, detect: renderDetect, label: renderLabel, splan: renderSplan, s3d: renderS3d, sitems: renderSitems, assets: renderAssets, wunits: renderWunits, sorter: renderSorter, together: renderTogether })[state.tab](); renderBanner(); labelTables();
 }
 function renderBanner() {
   const m = $("#main"); if (!m) return; let b = $("#errBanner");
@@ -542,7 +548,7 @@ async function refreshAll() {
       guard(sb.from("consumable_events").select("*").order("id", { ascending: false }).limit(100)),
       guard(sb.from("reorder_items").select("*").in("status", ["open", "in_draft"]).order("created_at", { ascending: false }).limit(200)),
       guard(sb.from("space_rooms").select("id,name,points").eq("active", true)),
-      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level").eq("active", true)),
+      guard(sb.from("space_units").select("id,name,levels,x,z,w,d,rot,kind,parent_id,parent_level,layout").eq("active", true)),
       guard(sb.from("assets").select("*").eq("active", true).order("name")),
       guard(sb.from("item_loans").select("*").order("taken_at", { ascending: false }).limit(300)),
       guard(sb.from("weigh_units").select("*").eq("active", true).order("name")),
@@ -602,7 +608,7 @@ function statusText(kind, it) {
 }
 function searchItems(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
-  return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.category, it.slot, it.location, it.tag, it.model, it.serial, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
+  return allEntries().filter(({ kind, it }) => { const hay = [it.name, it.spec, it.sku, it.category, it.slot, it.location, it.tag, it.model, it.serial, locText(it), kindName(kind)].join(" ").toLowerCase(); return words.every(w => hay.includes(w)); })
     .sort((a, b) => (a.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) - (b.it.name.toLowerCase().startsWith(words[0]) ? 0 : 1) || a.it.name.localeCompare(b.it.name));
 }
 function placeRows(q) {   // shelves, cabinets and boxes whose name matches: open their page
@@ -631,7 +637,7 @@ function attention() {
   if (lateL.length) c.push(["warn", lateL.length, `overdue: ${lateL.slice(0, 3).map(l => esc(l.item_name)).join(", ")}${lateL.length > 3 ? "…" : ""} (${lateL.slice(0, 2).map(l => esc(l.person)).join(", ")}).`, "See loans", "go:loans"]);
   else if (ol.length) c.push(["hi", ol.length, `item${ol.length > 1 ? "s are" : " is"} taken out and due back.`, "See loans", "go:loans"]);
   const rep = (state.assets || []).filter(a => a.status === "repair"); if (rep.length) c.push(["hi", rep.length, `asset${rep.length > 1 ? "s" : ""} in repair: ${rep.map(a => esc(a.name)).join(", ")}.`, "See assets", "go:assets"]);
-  const sim = hasSpace ? similarGroups() : []; if (sim.length) c.push(["hi", sim.length, `group${sim.length > 1 ? "s" : ""} of similar items stored in different places. Together they are quicker to find.`, "See suggestions", "sim-all"]);
+  const sim = hasSpace ? similarGroups() : []; if (sim.length) c.push(["hi", sim.length, `group${sim.length > 1 ? "s" : ""} of similar items stored in different places. Together they are quicker to find.`, "See suggestions", "go:together"]);
   if (hasSpace && unplaced) c.push(["", unplaced, `item${unplaced > 1 ? "s have" : " has"} no place on a shelf yet, so Find cannot show ${unplaced > 1 ? "them" : "it"}.`, "Place items", "go:sitems"]);
   const stale = state.citems.filter(i => !i.counted_at || Date.now() - new Date(i.counted_at) > 30 * 86400e3);
   if (stale.length) c.push(["", stale.length, `consumable${stale.length > 1 ? "s" : ""} not counted in the last 30 days.`, "Count", "go:count"]);
@@ -664,38 +670,44 @@ function simNoun(kind, it) {   // the last word of the name is what it is: "Pan 
   return n;
 }
 const simLabel = g => { const n = g.noun.charAt(0).toUpperCase() + g.noun.slice(1); return /(s|x|ch|sh)$/.test(n) ? n + "es" : /y$/.test(n) ? n.slice(0, -1) + "ies" : n + "s"; };
-function similarGroups() {
+function similarGroups(withOff) {
   const by = {}; allEntries().forEach(e => { const n = simNoun(e.kind, e.it); if (!n) return; const k = e.kind + ":" + n; (by[k] = by[k] || { key: k, noun: n, kind: e.kind, items: [] }).items.push(e); });
   const off = SIM_OFF(), out = [];
   for (const g of Object.values(by)) {
     if (g.items.length < 2) continue; const placed = g.items.filter(x => placeKey(x.it)), keys = [...new Set(placed.map(x => placeKey(x.it)))]; if (keys.length < 2) continue;
-    const sig = g.key + "|" + g.items.map(x => x.it.id + "@" + (x.it.unit_id || "-")).sort().join(","); if (off.includes(sig)) continue;
+    const sig = g.key + "|" + g.items.map(x => x.it.id + "@" + (x.it.unit_id || "-")).sort().join(","), isOff = off.includes(sig); if (isOff && !withOff) continue;
     const cnt = {}; placed.forEach(x => { const k = placeKey(x.it); cnt[k] = (cnt[k] || 0) + 1; });
     const best = keys.sort((a, b) => cnt[b] - cnt[a] || String(a).localeCompare(String(b)))[0];   // the place that already holds the most
     const here = placed.filter(x => placeKey(x.it) === best), uc = {}; here.forEach(x => { uc[x.it.unit_id] = (uc[x.it.unit_id] || 0) + 1; });
     const unitId = Object.keys(uc).sort((a, b) => uc[b] - uc[a])[0], lc = {}; here.filter(x => x.it.unit_id === unitId).forEach(x => { lc[x.it.level] = (lc[x.it.level] || 0) + 1; });
-    out.push({ ...g, sig, target: { unit_id: unitId, level: Number(Object.keys(lc).sort((a, b) => lc[b] - lc[a])[0]) || 1 }, there: here.length, places: keys.length, moves: g.items.filter(x => placeKey(x.it) !== best) });
+    out.push({ ...g, sig, off: isOff, target: { unit_id: unitId, level: Number(Object.keys(lc).sort((a, b) => lc[b] - lc[a])[0]) || 1 }, there: here.length, places: keys.length, moves: g.items.filter(x => placeKey(x.it) !== best) });
   }
   return out.sort((a, b) => b.moves.length - a.moves.length || a.noun.localeCompare(b.noun));
 }
 function simCard(g) {
   const tu = unitById(g.target.unit_id), tgt = unitLabel(tu) + (tu.parent_id ? "" : " · level " + g.target.level);
-  return `<div class="acard hi"><h3 style="font-size:24px">${esc(simLabel(g))} <span class="hint" style="font-size:14px;font-family:var(--body)">${g.items.length} items in ${g.places} places</span></h3>
+  return `<div class="acard hi sim"><h3 style="font-size:24px">${esc(simLabel(g))} <span class="hint" style="font-size:14px;font-family:var(--body)">${g.items.length} items in ${g.places} places</span></h3>
     <ul style="list-style:none;margin:0;padding:0;font-size:14px">${g.items.map(({ kind, it }) => { const stay = !g.moves.some(m => m.kind === kind && m.it.id === it.id); return `<li style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;${stay ? "color:var(--steel);font-weight:600" : ""}"><button class="linkname" data-act="sheet" data-kind="${kind}" data-id="${it.id}">${esc(fullName(it))}</button><span class="hint" style="margin:0;text-align:right">${esc(whereText(it) || "not placed yet")}</span></li>`; }).join("")}</ul>
     <p>Suggested home: <strong>${esc(tgt)}</strong>, which already holds ${g.there} of them.</p>
-    <div class="row"><button class="btn" data-act="sim-move" data-g="${esc(g.key)}">Move ${g.moves.length} there</button><button class="btn sec" data-act="sim-pick" data-g="${esc(g.key)}">Pick another place</button><button class="linkbtn" style="color:var(--steel)" data-act="sim-skip" data-g="${esc(g.key)}">Not now</button></div></div>`;
+    <div class="row"><button class="btn" data-act="sim-move" data-g="${esc(g.key)}">Move ${g.moves.length} there</button><button class="btn sec" data-act="sim-pick" data-g="${esc(g.key)}">Pick another place</button>${g.off ? `<button class="linkbtn" style="color:var(--steel)" data-act="sim-back" data-g="${esc(g.key)}">Show on Home again</button>` : `<button class="linkbtn" style="color:var(--steel)" data-act="sim-skip" data-g="${esc(g.key)}">Not now</button>`}</div></div>`;
+}
+function renderTogether() {
+  const all = (state.spaceUnits || []).length ? similarGroups(true) : [], on = all.filter(g => !g.off), off = all.filter(g => g.off), grid = gs => `<div class="cards4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))">${gs.map(simCard).join("")}</div>`;
+  $("#main").innerHTML = `<div class="summary"><div><h1>Keep together</h1><p>The same kind of thing stored in different places. Putting them side by side makes them quicker to find and to count. Suggestions you dismiss on Home are kept here too.</p></div></div>
+    ${!(state.spaceUnits || []).length ? `<div class="empty"><p>Draw your shelves and place items first. Suggestions appear when the same kind of thing lives in more than one place.</p></div>` : on.length ? grid(on) : `<div class="empty"><p>Nothing to suggest. Similar things are already stored together.</p></div>`}
+    ${off.length ? `<section class="block"><h2>Dismissed (${off.length})</h2><p class="hint" style="margin:0 0 10px">You chose Not now for these. They come back here if the items move.</p>${grid(off)}</section>` : ""}`;
 }
 function simSection() {
   if (!(state.spaceUnits || []).length) return ""; const gs = similarGroups(); if (!gs.length) return ""; const show = state.simAll ? gs : gs.slice(0, 2);
   return `<section class="block" id="simSec"><h2>Keep similar things together</h2><p class="hint" style="margin:0 0 10px">These are the same kind of thing but stored in different places. Putting them side by side makes them quicker to find and to count.</p>
-    <div class="cards4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))">${show.map(simCard).join("")}</div>${gs.length > show.length ? `<button class="btn sec" style="margin-top:10px" data-act="sim-all">Show all ${gs.length}</button>` : ""}</section>`;
+    <div class="cards4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr))">${show.map(simCard).join("")}</div>${gs.length > show.length ? `<button class="btn sec" style="margin-top:10px" data-act="go:together">See all ${gs.length}</button>` : `<button class="linkbtn" style="color:var(--steel);margin-top:8px;padding:0" data-act="go:together">All suggestions, including ones you dismissed</button>`}</section>`;
 }
 async function simMove(key, tgt) {   // without a target: the suggested home. With one: everything not already exactly there.
-  const g = similarGroups().find(x => x.key === key); if (!g) return; const t = tgt || g.target, list = tgt ? g.items.filter(x => !(x.it.unit_id === t.unit_id && Number(x.it.level) === Number(t.level))) : g.moves; let n = 0;
-  try { for (const m of list) { await guard(rpcAuth("toolscale_space_place", { p_kind: m.kind, p_id: m.it.id, p_unit: t.unit_id, p_level: t.level })); n++; } await refreshAll(); toast("Moved " + n + " item" + (n === 1 ? "" : "s") + " to " + unitLabel(unitById(t.unit_id)) + (unitById(t.unit_id).parent_id ? "" : " · level " + t.level)); if (state.tab === "home") renderHome(); } catch (e) {}
+  const g = similarGroups(true).find(x => x.key === key); if (!g) return; const t = tgt || g.target, list = tgt ? g.items.filter(x => !(x.it.unit_id === t.unit_id && Number(x.it.level) === Number(t.level))) : g.moves; let n = 0;
+  try { for (const m of list) { await guard(rpcAuth("toolscale_space_place", { p_kind: m.kind, p_id: m.it.id, p_unit: t.unit_id, p_level: t.level })); n++; } await refreshAll(); toast("Moved " + n + " item" + (n === 1 ? "" : "s") + " to " + unitLabel(unitById(t.unit_id)) + (unitById(t.unit_id).parent_id ? "" : " · level " + t.level)); renderTab(); } catch (e) {}
 }
 function simPick(key) {
-  const g = similarGroups().find(x => x.key === key); if (!g) return; const d = $("#dlg");
+  const g = similarGroups(true).find(x => x.key === key); if (!g) return; const d = $("#dlg");
   d.innerHTML = `<form method="dialog" id="simForm"><div class="dlg-h"><h2>Keep ${esc(simLabel(g).toLowerCase())} together</h2></div><div class="dlg-b"><p style="margin:0">Choose where all ${g.items.length} should live.</p>${placeHtml({ unit_id: g.target.unit_id, level: g.target.level }, "sm")}</div>
     <div class="dlg-f"><button type="button" class="btn sec" id="sm_cancel">Cancel</button><button type="submit" class="btn">Move them here</button></div></form>`;
   d.showModal(); bindPlace("sm"); $("#sm_cancel").onclick = () => d.close();
@@ -715,7 +727,8 @@ function renderHome() {
     <button data-act="go:count">${icon("count")}Count stock</button>
     <button data-act="go:board">${icon("tools")}Who has what</button>
     ${shown("splan") ? `<button data-act="go:splan">${icon("cube")}Edit my space</button>` : ""}
-    <button data-act="add-any">${icon("plus")}Add an item</button></div></section>
+    <button data-act="add-any">${icon("plus")}Add an item</button>
+    <button data-act="scan">${icon("camera")}Scan a label</button></div></section>
   ${todo ? `<section class="block"><h2>Getting set up (${steps.length - todo} of ${steps.length})</h2><div class="panel"><ul class="steps">${steps.map(([done, txt, act]) => `<li class="${done ? "done" : ""}"><span class="ck">${done ? "✓" : ""}</span><span class="t">${txt}</span>${done ? "" : `<button class="linkbtn" style="color:var(--steel);padding:0" data-act="${act}">Do it</button>`}</li>`).join("")}</ul></div></section>` : ""}
   <section class="block"><h2>Latest</h2>${feed.length ? `<ul class="log">${feed.map(f => `<li class="${f.warn ? "check" : ""}"><div class="t">${esc(when(f.ts))}</div><div><div class="what">${esc(f.what)}</div>${f.note ? `<div class="note">${esc(f.note)}</div>` : ""}</div></li>`).join("")}</ul>` : `<div class="empty"><p>Nothing has happened yet.</p></div>`}</section>`;
   const q = $("#q"), paint = () => { state.q = q.value; $("#qRes").innerHTML = q.value.trim() ? placeRows(q.value) + resultRows(searchItems(q.value)) : ""; };
@@ -737,8 +750,8 @@ const unitLabel = u => {
 };
 const isBox = u => u && u.kind === "box";
 const isTableUnit = u => u && (u.kind === "desk" || u.kind === "bench");
-const slotWord = u => isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
-const levelOpts = (u, lv) => u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
+const slotWord = u => u && u.kind === "bag" ? "Where" : isBox(u) ? "Section" : isTableUnit(u) ? "Where on it" : "Level";
+const levelOpts = (u, lv) => u && u.kind === "bag" ? `<option value="1" selected>in the bag</option>` : u && isTableUnit(u) ? `<option value="1" ${Number(lv) !== 2 ? "selected" : ""}>on the top</option><option value="2" ${Number(lv) === 2 ? "selected" : ""}>under the table</option>` : u ? Array.from({ length: Number(u.levels) || 1 }, (_, i) => `<option ${Number(lv) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("") : `<option value="">-</option>`;
 function bindPlace(k) { const us = $("#" + k + "_unit"); if (us) us.onchange = () => { const u = (state.spaceUnits || []).find(x => x.id === us.value); $("#" + k + "_lvl").innerHTML = levelOpts(u, 1); const l = $("#" + k + "_lvlL"); if (l) l.textContent = slotWord(u); }; }
 async function savePlace(kind, id, k, it) {
   const us = $("#" + k + "_unit"); if (!us) return; const unit = us.value || null, lvl = unit ? Number($("#" + k + "_lvl").value) || 1 : null;
@@ -752,11 +765,13 @@ function paintSheet() {
   const lh = (state.loans || []).filter(l => l.kind === sh.kind && l.item_id === it.id).slice(0, 4).map(l => [l.taken_at, l.kind === "consumable" ? `${l.qty} taken by ${l.person}${l.due_at ? "" : " (used)"}` : `Taken by ${l.person} · ${l.returned_at ? "returned " + when(l.returned_at) : dueWord(l)}`]);
   const hist0 = asset ? [] : tool ? state.events.filter(e => e.tool_id === it.id).slice(0, 6).map(e => [e.ts, eventText(e)]) : state.cevents.filter(e => e.item_id === it.id).slice(0, 6).map(e => [e.ts, `${e.delta > 0 ? "+" : ""}${e.delta} (now ${e.count_after})${e.note ? " · " + e.note : ""}`]);
   const hist = [...hist0, ...lh].sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 8);
+  const skuF = [["SKU", it.sku || "-"]];
   const facts = asset ? [["Status", ASSET_STATUS[it.status] || it.status], ...(loanFor("asset", it.id) ? [["Taken by", loanFor("asset", it.id).person + (whyText(loanFor("asset", it.id)) ? " · " + whyText(loanFor("asset", it.id)) : "")], ["Return", dueWord(loanFor("asset", it.id))]] : []), ["Tag", it.tag || "-"], ["Model", it.model || "-"], ["Serial", it.serial || "-"], ["Size", Math.round(it.w * 100) + " × " + Math.round(it.d * 100) + " × " + Math.round(it.h * 100) + " cm"]]
     : tool ? [["Status", it.status === "out" ? outWord(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
     : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ...(wunitOf(it.id) ? [["Weighing unit", wunitOf(it.id).name + (wunitOf(it.id).last_g != null ? " · " + fmtG(wunitOf(it.id).last_g, 1) + " g" : "")]] : []), ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
-    <div class="facts">${facts.map(([k, v]) => `<div><div class="k">${k}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
+    <div class="phbox" id="phBox"></div>
+    <div class="facts">${[...skuF, ...facts].map(([k, v]) => `<div><div class="k">${k}${k === "SKU" ? ` <button type="button" class="linkbtn" style="color:var(--steel);padding:0;font-size:12px" data-act="sku-edit" data-kind="${sh.kind}" data-id="${it.id}">change</button>` : ""}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
     ${ord ? `<div class="banner info" style="margin:0"><span>On the order list: ${ord.qty} × (${esc(ord.reason)}${ord.status === "in_draft" ? ", in the MR draft" : ""}).</span></div>` : ""}
     <div><h3 style="font-size:22px;margin-bottom:6px">Where it lives</h3><p style="margin:0 0 8px">${where ? esc(where) : `<span class="hint">No place set yet.</span>`}</p>
       ${it.unit_id ? `<button type="button" class="btn" data-act="locate" data-kind="${sh.kind}" data-id="${it.id}">Show in 3D</button>` : ""}
@@ -764,7 +779,7 @@ function paintSheet() {
     ${asset ? (it.notes ? `<div><h3 style="font-size:22px;margin-bottom:6px">Notes</h3><p style="margin:0;white-space:pre-wrap">${esc(it.notes)}</p></div>` : "") : ""}
     ${asset && !hist.length ? "" : `<div><h3 style="font-size:22px;margin-bottom:6px">Recent</h3>${hist.length ? `<ul class="log">${hist.map(([ts, t]) => `<li><div class="t">${esc(when(ts))}</div><div>${esc(t)}</div></li>`).join("")}</ul>` : `<p class="hint">Nothing recorded yet.</p>`}</div>`}</div>
     <div class="dlg-f">
-      ${takeBtn(sh.kind, it)}
+      ${takeBtn(sh.kind, it)}<button type="button" class="btn sec" data-act="store" data-kind="${sh.kind}" data-id="${it.id}">Put away</button><button type="button" class="btn sec" data-act="qr-item" data-kind="${sh.kind}" data-id="${it.id}">QR label</button>
       ${asset ? `<button type="button" class="btn sec" data-act="asset-flip" data-id="${it.id}">${it.status === "repair" ? "Back in use" : "Report: in repair"}</button>
         <button type="button" class="btn sec" data-act="asset-edit" data-id="${it.id}">Edit</button>`
       : tool ? `${it.status === "out" && !loanFor("tool", it.id) ? `<button type="button" class="btn sec" data-act="flip" data-id="${it.id}" data-to="in">Mark in</button>` : ""}
@@ -774,7 +789,7 @@ function paintSheet() {
         <button type="button" class="btn sec" data-act="report" data-kind="consumable" data-id="${it.id}">Reorder</button>
         <button type="button" class="btn sec" data-act="citem-edit" data-id="${it.id}">Edit</button>`}
       </div></form>`;
-  bindPlace("sp");
+  bindPlace("sp"); paintPhoto(sh.kind, it.id);
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
 /* ---------- assets: equipment you keep track of, drawn as a box on a table, shelf or the floor ---------- */
@@ -782,7 +797,7 @@ const saveAsset = a => guard(rpcAuth("toolscale_asset_save", { p_id: a.id || nul
 const ASSET_SIZES = [["PC tower", 20, 45, 45], ["Monitor", 55, 20, 35], ["Laptop", 35, 25, 4], ["Oscilloscope", 35, 30, 15], ["Soldering station", 15, 20, 20], ["Power supply", 25, 25, 10], ["3D printer", 40, 40, 40], ["Small box", 20, 20, 15], ["Medium box", 40, 30, 25]];
 function renderAssets() {
   const q = (state.assetQ || "").toLowerCase(), list = (state.assets || []).filter(a => !q || [a.name, a.category, a.tag, a.model, a.serial, whereText(a)].join(" ").toLowerCase().includes(q));
-  $("#main").innerHTML = `<div class="summary"><div><h1>Assets</h1><p>Equipment you want to keep track of: a PC, an oscilloscope, a soldering station. Give each a size and it shows as a box on its workbench or table, on a shelf, or in a room.</p></div><button class="btn" data-act="asset-add">Add asset</button></div>
+  $("#main").innerHTML = `<div class="summary"><div><h1>Assets</h1><p>Equipment you want to keep track of: a PC, an oscilloscope, a soldering station. Give each a size and it shows as a box on its workbench or table, on a shelf, or in a room.</p></div><div class="row" style="gap:8px"><button class="btn sec" data-act="qr-items">Print item labels</button><button class="btn" data-act="asset-add">Add asset</button></div></div>
   ${(state.assets || []).length ? `<div class="field" style="max-width:320px;margin-bottom:12px"><input id="asQ" type="search" placeholder="Filter by name, tag or place" value="${esc(state.assetQ || "")}" aria-label="Filter"></div>
   <div class="tablewrap"><table class="cards"><thead><tr><th>Asset</th><th>Type</th><th>Tag</th><th>Status</th><th>Where</th><th>Size</th><th></th></tr></thead><tbody>
   ${list.map(a => `<tr><td><button class="linkname" data-act="sheet" data-kind="asset" data-id="${a.id}"><strong>${esc(a.name)}</strong></button>${a.model ? `<div class="hint">${esc(a.model)}</div>` : ""}</td><td>${esc(a.category || "-")}</td><td>${esc(a.tag || "-")}</td><td>${statusText("asset", a)}</td><td>${esc(whereText(a) || "-")}</td><td class="num">${Math.round(a.w * 100)} × ${Math.round(a.d * 100)} × ${Math.round(a.h * 100)} cm</td>
@@ -884,7 +899,7 @@ function renderBoard() {
 function renderTools() {
   const tools = sortedTools();
   $("#main").innerHTML = `<div class="summary"><div><h1>Tools</h1><p>Your tool list. Each tool needs a weight the scale can recognise; tools too close in weight are flagged, because the scale cannot tell them apart.</p></div>
-    <button class="btn" data-act="add">Add tool</button></div>
+    <div class="row" style="gap:8px"><button class="btn sec" data-act="qr-items">Print item labels</button><button class="btn" data-act="add">Add tool</button></div></div>
   ${tools.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Tool</th><th>Lives in</th><th>Weight</th><th>Window</th><th>State</th><th></th></tr></thead><tbody>
   ${tools.map(t => { const c = closeTo(t); return `<tr><td><button class="linkname" data-act="sheet" data-kind="tool" data-id="${t.id}"><strong>${esc(t.name)}</strong></button>${c.length ? `<div>${c.map(o => `<span class="chip warn">Close to ${esc(o.name)} (${fmtG(Math.abs(Number(o.weight_g) - Number(t.weight_g)), 1)} g apart)</span>`).join("")}</div>` : ""}</td>
     <td>${esc(whereText(t) || "-")}</td><td class="num">${fmtG(t.weight_g)} g</td><td class="num">&plusmn; ${fmtG(t.tol_g)} g</td>
@@ -1087,7 +1102,7 @@ function renderStock() {
 }
 function renderItems() {
   const items = state.citems;
-  $("#main").innerHTML = `<div class="summary"><div><h1>Consumables</h1><p>Your list of screws, bolts, nuts and other parts. Each needs its weight per piece and the weight of its empty bin; weigh 10 to 20 pieces on Stock, Count by weight, to learn it.</p></div><button class="btn" data-act="citem-add">Add consumable</button></div>
+  $("#main").innerHTML = `<div class="summary"><div><h1>Consumables</h1><p>Your list of screws, bolts, nuts and other parts. Each needs its weight per piece and the weight of its empty bin; weigh 10 to 20 pieces on Stock, Count by weight, to learn it.</p></div><div class="row" style="gap:8px"><button class="btn sec" data-act="qr-items">Print item labels</button><button class="btn" data-act="citem-add">Add consumable</button></div></div>
   ${items.length ? `<div class="tablewrap"><table class="cards"><thead><tr><th>Item</th><th>Type</th><th>Per piece</th><th>Empty bin</th><th>Minimum</th><th>Where</th><th></th></tr></thead><tbody>
   ${items.map(i => `<tr><td><button class="linkname" data-act="sheet" data-kind="consumable" data-id="${i.id}"><strong>${esc(i.name)}</strong></button>${i.spec ? `<div class="hint">${esc(i.spec)}</div>` : ""}</td><td>${esc(i.category)}</td><td class="num">${fmtG(i.unit_g, 3)} g</td><td class="num">${fmtG(i.container_g)} g</td><td class="num">${i.min_stock || "-"}</td><td>${esc(whereText(i) || "-")}</td>
     <td><button class="btn sec" data-act="citem-edit" data-id="${i.id}">Edit</button> <button class="btn sec" data-act="report" data-kind="consumable" data-id="${i.id}">Reorder</button>${i.unit_id ? ` <button class="btn sec" data-act="locate" data-kind="consumable" data-id="${i.id}">Show</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty"><h2>Nothing here yet</h2><p>Add your first item to get started.</p></div>`}`;
@@ -1239,7 +1254,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "51";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "55";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1260,7 +1275,7 @@ const renderSplan = () => spacePage("plan"), renderS3d = () => spacePage("view3d
 /* where an item lives, from the Space mode: "Workshop - Shelf A - level 2" */
 function locText(it) {
   const u = (state.spaceUnits || []).find(x => x.id === it.unit_id); if (!u) return "";
-  return unitLabel(u) + (isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
+  return unitLabel(u) + (u.kind === "bag" ? "" : isBox(u) ? (Number(u.levels) > 1 ? " · section " + it.level : "") : isTableUnit(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level);
 }
 function locateItem(kind, id) { state.spaceFocus = { kind, id }; if ($("#dlg").open) $("#dlg").close(); if (state.tab === "s3d") renderTab(); else setTab("s3d"); }
 
@@ -1280,6 +1295,12 @@ async function onMainClick(ev) {
     else if (a === "wu-zero") requireAuth(async () => { try { await guard(rpcAuth("toolscale_wunit_zero", { p_id: el.dataset.id })); await refreshAll(); renderTab(); toast("Counting from the weight now."); } catch (e) {} });
     else if (a === "bin-add") requireAuth(() => binDialog(null, !!el.dataset.reject));
     else if (a === "bin-edit") requireAuth(() => binDialog((state.sbins || []).find(b => b.id === el.dataset.id)));
+    else if (a === "scan") scanSheet({ mode: "any" });
+    else if (a === "store") requireAuth(() => scanSheet({ mode: "place", kind: el.dataset.kind, id: el.dataset.id }));
+    else if (a === "store-here") requireAuth(() => scanSheet({ mode: "item", unit: el.dataset.id }));
+    else if (a === "qr-item") itemLabels([{ kind: el.dataset.kind, id: el.dataset.id }]);
+    else if (a === "qr-items") itemLabelChooser();
+    else if (a === "sku-edit") requireAuth(() => skuDialog(el.dataset.kind, el.dataset.id));
     else if (a === "take") requireAuth(() => takeSheet(el.dataset.kind, el.dataset.id));
     else if (a === "loan-return") requireAuth(() => returnLoan(el.dataset.loan));
     else if (a === "loc-open") locSheet(el.dataset.id);
@@ -1297,7 +1318,8 @@ async function onMainClick(ev) {
     else if (a === "asset-edit") requireAuth(() => assetDialog(state.assets.find(x => x.id === el.dataset.id)));
     else if (a === "asset-flip") requireAuth(async () => { const x = state.assets.find(i => i.id === el.dataset.id), sh = state.sheet; if (!x) return; try { await saveAsset({ ...x, status: x.status === "repair" ? "in_use" : "repair" }); await refreshAll(); if (sh && $("#dlg").open) itemSheet(sh.kind, sh.id); } catch (e) {} });
     else if (a === "sim-all") { state.simAll = true; if (state.tab !== "home") setTab("home"); else renderHome(); $("#simSec")?.scrollIntoView({ block: "start" }); }
-    else if (a === "sim-skip") { const g = similarGroups().find(x => x.key === el.dataset.g); if (g) { const off = SIM_OFF(); off.push(g.sig); try { localStorage.setItem("ts_sim_off", JSON.stringify(off.slice(-100))); } catch (e) {} renderHome(); } }
+    else if (a === "sim-skip") { const g = similarGroups().find(x => x.key === el.dataset.g); if (g) { const off = SIM_OFF(); off.push(g.sig); try { localStorage.setItem("ts_sim_off", JSON.stringify(off.slice(-100))); } catch (e) {} toast("Hidden from Home. Find it again under Find, Keep together."); renderTab(); } }
+    else if (a === "sim-back") { const g = similarGroups(true).find(x => x.key === el.dataset.g); if (g) { try { localStorage.setItem("ts_sim_off", JSON.stringify(SIM_OFF().filter(x => x !== g.sig))); } catch (e) {} renderTab(); } }
     else if (a === "sim-move") requireAuth(() => simMove(el.dataset.g));
     else if (a === "sim-pick") requireAuth(() => simPick(el.dataset.g));
     else if (a === "goto-tools") setTab("tools");
@@ -1378,6 +1400,26 @@ function takeSheet(kind, id) {
   $("#tkOtherGo").onclick = () => { const n = Number($("#tk_n").value); if (!(n >= 1)) { $("#tk_n").focus(); return; } go("Borrowed", new Date(Date.now() + n * Number($("#tk_u").value)).toISOString()); };
   $("#tk_n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#tkOtherGo").click(); } };
 }
+/* a photo per item: kept small (resized in the browser) and loaded only when its card opens */
+state.photos = {};
+async function paintPhoto(kind, id) {
+  const box = $("#phBox"), key = kind + ":" + id; if (!box) return;
+  const draw = () => { const b = $("#phBox"); if (!b || !state.sheet || state.sheet.id !== id) return; const src = state.photos[key];
+    b.innerHTML = `${src ? `<img src="${src}" alt="Photo" id="phImg">` : ""}<div class="row"><label class="btn sec" style="margin:0;cursor:pointer">📷 ${src ? "New photo" : "Take a photo"}<input type="file" accept="image/*" capture="environment" class="phIn" id="phIn" hidden></label><label class="btn sec" style="margin:0;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" class="phIn" id="phGal" hidden></label>${src ? `<button type="button" class="btn sec" id="phDel">Remove photo</button>` : ""}</div>`;
+    b.querySelectorAll(".phIn").forEach(i => i.onchange = e => { const f = e.target.files[0]; if (f) requireAuth(() => savePhoto(kind, id, f)); });
+    if ($("#phDel")) $("#phDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this photo?")) return; try { await guard(rpcAuth("toolscale_item_photo", { p_kind: kind, p_id: id, p_photo: "" })); state.photos[key] = null; draw(); } catch (e) {} });
+    if ($("#phImg")) $("#phImg").onclick = () => window.open().document.write(`<img src="${src}" style="max-width:100%">`); };
+  if (!(key in state.photos)) { draw(); try { const r = await sb.from("item_photos").select("photo").eq("kind", kind).eq("item_id", id).maybeSingle(); state.photos[key] = r.data?.photo || null; } catch (e) { state.photos[key] = null; } }
+  draw();
+}
+async function savePhoto(kind, id, file) {
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("That file is not a picture.")); i.src = URL.createObjectURL(file); });
+    let max = 1000, q = 0.78, out = "";
+    for (let n = 0; n < 6; n++) { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); out = c.toDataURL("image/jpeg", q); if (out.length < 380000) break; max *= 0.8; q -= 0.08; }
+    await guard(rpcAuth("toolscale_item_photo", { p_kind: kind, p_id: id, p_photo: out })); state.photos[kind + ":" + id] = out; toast("Photo saved"); paintPhoto(kind, id);
+  } catch (e) { if (e.message && !/sign in/i.test(e.message)) toast(e.message, true); }
+}
 /* adding to what is on hand, for example after a delivery */
 function addStockSheet(id) {
   const it = state.citems.find(x => x.id === id); if (!it) return; const d = $("#dlg"), now = Number(it.count_on_hand) || 0;
@@ -1392,6 +1434,16 @@ function addStockSheet(id) {
   $("#asBack").onclick = () => { if (state.loc && unitById(state.loc)) locSheet(state.loc); else if (state.sheet) itemSheet(state.sheet.kind, state.sheet.id); else d.close(); };
   $("#asForm").onsubmit = ev => { ev.preventDefault(); if (!q()) return; requireAuth(async () => { try { const n = await guard(rpcAuth("toolscale_consumable_add", { p_id: id, p_qty: q() })); await refreshAll(); toast(`Added ${q()}. Now ${n} on hand.`); afterLoan(); } catch (e) {} }); };
   setTimeout(() => { $("#as_q")?.focus(); $("#as_q")?.select(); }, 50);
+}
+/* a tool bag's layout as a picture: each slot with its tool, the one you are looking for in yellow */
+function bagSvg(u, hi) {
+  const W = Math.round(Number(u.w) * 100), H = Math.round(Number(u.d) * 100), L = Array.isArray(u.layout) ? u.layout : []; if (!L.length) return "";
+  const tl = id => state.tools.find(t => t.id === id);
+  return `<svg class="bagsvg" viewBox="-1 -1 ${W + 2} ${H + 6}" role="img" aria-label="Tool layout of ${esc(u.name)}"><rect x="0" y="0" width="${W}" height="${H}" rx="1.5" fill="#2A3439"/>${L.map(s => {
+    const t = s.tool && tl(s.tool), on = !!hi && s.tool === hi, out = t && t.status === "out", nm = (s.label || (t ? t.name : "")) + (out ? " (out)" : ""), tall = s.h > s.w * 1.4, long = tall ? s.h : s.w, short = tall ? s.w : s.h;
+    const fs = Math.max(1, Math.min(3.2, short * 0.5, long / Math.max(3, nm.length) * 1.8)), cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+    return `<g><rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="0.6" fill="${on ? "#F2C200" : out ? "#5A2A22" : t ? "#3E6E86" : "#55636B"}" stroke="${on ? "#fff" : "#9DB0B8"}" stroke-width="${on ? 0.5 : 0.2}"${out ? ' stroke-dasharray="1 0.6"' : ""}/>${nm ? `<text x="${cx}" y="${cy}" font-size="${fs}" text-anchor="middle" dominant-baseline="central" fill="${on ? "#14232B" : "#fff"}" font-family="sans-serif" font-weight="600"${tall ? ` transform="rotate(-90 ${cx} ${cy})"` : ""}>${esc(nm)}</text>` : ""}</g>`;
+  }).join("")}<text x="${W / 2}" y="${H + 3.5}" font-size="2.4" text-anchor="middle" fill="#5B6B73" font-family="sans-serif" font-weight="600">FRONT</text></svg>`;
 }
 /* a place: shelf, cabinet, table or box, with everything in it. This is the page a QR code opens. */
 function placedAt(uid) { return allEntries().filter(x => x.it.unit_id === uid); }
@@ -1409,16 +1461,18 @@ function locSheet(uid) {
     if (single) return placedAt(p.id).map(row).join("") || `<div class="hint">Nothing here.</div>`;
     return Array.from({ length: n }, (_, i) => n - i).map(lv => { const html = group(lv); return `<div class="locgrp"><div class="locgh">${tbl ? (lv === 2 ? "Under the table" : "On the top") : sections ? "Section " + lv : "Level " + lv}</div>${html || `<div class="hint" style="margin:0">Empty</div>`}</div>`; }).join("");
   };
-  const body = isBox(u) && !(Number(u.levels) > 1) ? slots(u) + subs(u.id).map(c => boxHtml(c, 0)).join("") : slots(u) + (isBox(u) ? subs(u.id).map(c => boxHtml(c, 0)).join("") : "");
+  const body = u.kind === "bag" ? (bagSvg(u) || "") + (placedAt(u.id).map(row).join("") || `<div class="hint">Nothing in this bag yet.</div>`) : isBox(u) && !(Number(u.levels) > 1) ? slots(u) + subs(u.id).map(c => boxHtml(c, 0)).join("") : slots(u) + (isBox(u) ? subs(u.id).map(c => boxHtml(c, 0)).join("") : "");
   const out = openLoans().filter(l => { const x = allEntries().find(e => e.kind === l.kind && e.it.id === l.item_id); const holder = x && x.it.unit_id; let p = holder && unitById(holder), n = 0; while (p && n++ < 10) { if (p.id === uid) return true; p = p.parent_id && unitById(p.parent_id); } return false; });
   d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${esc(placeOf(u))}</div></div><div class="dlg-b">
     ${out.length ? `<div class="banner info" style="margin:0"><span>${out.length} item${out.length > 1 ? "s" : ""} from here taken out: ${out.map(l => esc(l.item_name) + " (" + esc(l.person) + ")").join(", ")}.</span></div>` : ""}
     ${body}<p class="hint" style="margin:0">Tap Take on an item to record it. You need to be signed in.</p></div>
-    <div class="dlg-f"><button type="button" class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button><button type="button" class="btn sec" data-act="loc-3d" data-id="${u.id}">Show in 3D</button></div></form>`;
+    <div class="dlg-f"><button type="button" class="btn sec" data-act="store-here" data-id="${u.id}">Put an item here</button><button type="button" class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button><button type="button" class="btn sec" data-act="loc-3d" data-id="${u.id}">Show in 3D</button></div></form>`;
   if (!d.open) d.showModal(); d.onclose = () => { state.sheet = null; state.loc = null; try { if (new URLSearchParams(location.search).get("loc")) history.replaceState(null, "", location.pathname); } catch (e) {} };
 }
 function openDeepLink() {
-  let id = null; try { id = new URLSearchParams(location.search).get("loc"); } catch (e) {} if (!id) return;
+  let id = null, sku = null; try { const q = new URLSearchParams(location.search); id = q.get("loc"); sku = q.get("sku"); } catch (e) {}
+  if (sku) { const x = itemBySku(sku); if (x) { itemSheet(x.kind, x.it.id); $("#dlg").addEventListener("close", () => { try { history.replaceState(null, "", location.pathname); } catch (e) {} }, { once: true }); } else toast("No item has the SKU " + sku + "."); return; }
+  if (!id) return;
   if (unitById(id)) locSheet(id); else { toast("That place is not in the system any more."); try { history.replaceState(null, "", location.pathname); } catch (e) {} }
 }
 /* QR codes: made in the browser (nothing is sent anywhere); the library loads the first time it is needed */
@@ -1512,6 +1566,110 @@ function binDialog(b, reject) {
   $("#bn_rej").onchange = e => { $("#bn_itemW").hidden = e.target.checked; };
   $("#bnSave").onclick = () => { if (!$("#binForm").reportValidity()) return; requireAuth(async () => { try { await guard(rpcAuth("toolscale_sbin_save", { p_id: b?.id || null, p_name: $("#bn_name").value, p_servo: Number($("#bn_servo").value), p_consumable: $("#bn_rej").checked ? null : ($("#bn_item").value || null), p_reject: $("#bn_rej").checked })); await refreshAll(); d.close(); renderTab(); toast("Saved"); } catch (e) {} }); };
   if ($("#bnDel")) $("#bnDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this bin?")) return; try { await guard(rpcAuth("toolscale_sbin_hide", { p_id: b.id })); await refreshAll(); d.close(); renderTab(); } catch (e) {} });
+}
+
+/* ---------- every item has a SKU and a QR label. Scan an item to take it or put it away; scan a place to see or fill it. ---------- */
+const itemBySku = sku => { const v = String(sku || "").trim().toUpperCase(); return v ? allEntries().find(e => String(e.it.sku || "").toUpperCase() === v) : null; };
+const itemUrl = it => location.origin + location.pathname + "?sku=" + encodeURIComponent(it.sku || "");
+function readCode(text) {   // what a scanned QR (or a typed code) points to
+  const t = String(text || "").trim(); let q = null; try { const u = new URL(t); q = u.searchParams; } catch (e) {}
+  const loc = q ? q.get("loc") : null, sku = q ? q.get("sku") : null;
+  if (loc && unitById(loc)) return { place: unitById(loc) };
+  const x = itemBySku(sku || t); if (x) return { item: x };
+  if (unitById(t)) return { place: unitById(t) };
+  const u = (state.spaceUnits || []).find(u => u.name.toLowerCase() === t.toLowerCase()); if (u) return { place: u };
+  return null;
+}
+function skuDialog(kind, id) {
+  const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const d = $("#dlg");
+  d.innerHTML = `<form id="skuForm" onsubmit="return false"><div class="dlg-h"><h2>SKU for ${esc(fullName(it))}</h2></div><div class="dlg-b"><div class="field"><label for="sku_v">SKU</label><input id="sku_v" maxlength="32" value="${esc(it.sku || "")}" autocomplete="off" style="text-transform:uppercase"><div class="hint">Letters, numbers, dot, dash or underscore. Change it to match your supplier's code if you like; reprint its label after.</div></div></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="skuBack">Back</button><button type="submit" class="btn">Save</button></div></form>`;
+  if (!d.open) d.showModal(); $("#skuBack").onclick = () => itemSheet(kind, id);
+  $("#skuForm").onsubmit = ev => { ev.preventDefault(); requireAuth(async () => { try { await guard(rpcAuth("toolscale_item_sku", { p_kind: kind, p_id: id, p_sku: $("#sku_v").value })); await refreshAll(); toast("SKU saved"); itemSheet(kind, id); } catch (e) {} }); };
+}
+async function itemLabels(list) {
+  let qr; try { qr = await loadQr(); } catch (e) { toast(e.message, true); return; }
+  const xs = list.map(({ kind, id }) => ({ kind, it: itemsOf(kind).find(x => x.id === id) })).filter(x => x.it && x.it.sku); if (!xs.length) { toast("No items with a SKU to print."); return; }
+  const lab = ({ kind, it }) => `<div class="qrl"><div class="qrc">${qrSvg(qr, itemUrl(it))}</div><div class="qrt"><strong>${esc(fullName(it))}</strong><span style="font:700 15px var(--mono,monospace)">${esc(it.sku)}</span><span>${esc(whereText(it) || kindName(kind))}</span></div></div>`;
+  const d = $("#dlg"); state.sheet = null; state.loc = null;
+  d.innerHTML = `<form method="dialog"><div class="dlg-h"><h2>Item label${xs.length > 1 ? "s" : ""} (${xs.length})</h2></div><div class="dlg-b"><p style="margin:0">Stick one on each item or its bin. Scanning it opens the item, to take it or put it away.</p><div class="qrgrid">${xs.map(lab).join("")}</div></div>
+    <div class="dlg-f"><button type="button" class="btn" id="qrPrint">Print</button></div></form>`;
+  if (!d.open) d.showModal();
+  $("#qrPrint").onclick = () => { const ps = document.createElement("div"); ps.id = "printSheet"; ps.innerHTML = `<div class="qrgrid">${xs.map(lab).join("")}</div>`; document.body.appendChild(ps); document.body.classList.add("printing"); const done = () => { document.body.classList.remove("printing"); ps.remove(); removeEventListener("afterprint", done); }; addEventListener("afterprint", done); setTimeout(() => print(), 60); };
+}
+function itemLabelChooser() {
+  const d = $("#dlg"), kinds = [["tool", "Tools", state.tools], ["consumable", "Consumables", state.citems], ["asset", "Assets", state.assets || []]].filter(k => k[2].length);
+  d.innerHTML = `<form id="ilPick" onsubmit="return false"><div class="dlg-h"><h2>Print item labels</h2></div><div class="dlg-b"><p style="margin:0">Which items?</p>
+    <div style="display:grid;gap:8px">${kinds.map(([k, l, a]) => `<label style="display:flex;gap:10px;align-items:center;border:2px solid var(--ink);padding:10px 12px;margin:0;font-weight:600;cursor:pointer"><input type="checkbox" class="ilK" value="${k}" checked style="width:20px;height:20px"><span style="flex:1">${l}</span><span class="hint" style="margin:0;font-weight:400">${a.length}</span></label>`).join("")}</div>
+    <label style="display:flex;gap:10px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="ilPlaced" style="width:20px;height:20px"> Only items that have a place</label></div>
+    <div class="dlg-f"><button type="submit" class="btn">Make labels</button></div></form>`;
+  if (!d.open) d.showModal();
+  $("#ilPick").onsubmit = ev => { ev.preventDefault(); const ks = [...d.querySelectorAll(".ilK:checked")].map(b => b.value), pl = $("#ilPlaced").checked; itemLabels(allEntries().filter(e => ks.includes(e.kind) && (!pl || e.it.unit_id)).sort((a, b) => whereText(a.it).localeCompare(whereText(b.it)) || a.it.name.localeCompare(b.it.name)).map(e => ({ kind: e.kind, id: e.it.id }))); };
+}
+/* which level or section, when a place has more than one */
+function askLevel(u, title, done, back) {
+  const tbl = isTableUnit(u), n = tbl ? 2 : Math.max(1, Number(u.levels) || 1);
+  if (u.kind === "bag" || n === 1) return done(1);
+  const d = $("#dlg"), word = isBox(u) ? "Section" : "Level";
+  d.innerHTML = `<form onsubmit="return false"><div class="dlg-h"><h2>${esc(title)}</h2><div style="font-size:14px;opacity:.8">${esc(u.name)} · ${esc(placeOf(u))}</div></div><div class="dlg-b"><p style="margin:0">Where in ${esc(u.name)}?</p><div class="lvpick">${tbl ? `<button type="button" data-lv="1">On the top</button><button type="button" data-lv="2">Under the table</button>` : Array.from({ length: n }, (_, i) => n - i).map(l => `<button type="button" data-lv="${l}">${word} ${l}${!isBox(u) && l === 1 ? " (lowest)" : !isBox(u) && l === n ? " (top)" : ""}</button>`).join("")}</div></div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="lvBack">Back</button></div></form>`;
+  if (!d.open) d.showModal(); d.querySelectorAll("[data-lv]").forEach(b => b.onclick = () => done(Number(b.dataset.lv))); $("#lvBack").onclick = back;
+}
+async function storeItem(kind, id, u, level) {
+  const it = itemsOf(kind).find(x => x.id === id); if (!it) return; const l = kind === "consumable" ? null : loanFor(kind, id);
+  try {
+    await guard(rpcAuth("toolscale_space_place", { p_kind: kind, p_id: id, p_unit: u.id, p_level: level }));
+    if (l) await guard(rpcAuth("toolscale_loan_return", { p_loan: l.id }));
+    else if (kind === "tool" && it.status === "out") await guard(rpcAuth("toolscale_set_status", { p_tool: id, p_status: "in" }));   // put back on its shelf means it is in
+    await refreshAll(); toast(`${fullName(it)} ${l || (kind === "tool" && it.status === "out") ? "back in and " : ""}put in ${u.name}${u.kind === "bag" || (Number(u.levels) || 1) === 1 ? "" : isTableUnit(u) ? (level === 2 ? ", under the table" : ", on the top") : (isBox(u) ? ", section " : ", level ") + level}.`);
+    itemSheet(kind, id); renderTab();
+  } catch (e) {}
+}
+/* the camera scanner: reads QR labels with the browser's own reader when it has one, else with a small library */
+let jsqrLib = null;
+const loadJsQR = () => jsqrLib || (jsqrLib = new Promise((res, rej) => { if (window.jsQR) return res(window.jsQR); const el = document.createElement("script"); el.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"; el.onload = () => res(window.jsQR); el.onerror = () => { jsqrLib = null; rej(new Error("Could not load the QR reader.")); }; document.head.appendChild(el); }));
+function scanSheet(ctx) {
+  const d = $("#dlg"); state.sheet = null; let stream = null, timer = null, done = false;
+  const tgtItem = ctx.mode === "place" ? itemsOf(ctx.kind).find(x => x.id === ctx.id) : null, tgtUnit = ctx.mode === "item" ? unitById(ctx.unit) : null;
+  const title = ctx.mode === "place" ? "Put away " + fullName(tgtItem || { name: "" }) : ctx.mode === "item" ? "Put an item in " + (tgtUnit?.name || "") : "Scan a label";
+  const ask = ctx.mode === "place" ? "Scan the QR label on the shelf, box or bag where it goes." : ctx.mode === "item" ? "Scan the item's QR label." : "Scan the QR label on an item or a place.";
+  const listHtml = ctx.mode === "place" ? `<div class="field"><label for="sc_pick">Or choose the place</label><select id="sc_pick" class="sel"><option value="">Choose…</option>${(state.spaceUnits || []).map(u => `<option value="${u.id}">${esc(unitLabel(u))}</option>`).join("")}</select></div>`
+    : `<div class="field"><label for="sc_code">Or type the SKU${ctx.mode === "any" ? " or a place name" : " or name"}</label><input id="sc_code" autocomplete="off" placeholder="${ctx.mode === "item" ? "e.g. C-0012 or pan head" : "e.g. T-0003"}"><div id="sc_res"></div></div>`;
+  d.innerHTML = `<form onsubmit="return false"><div class="dlg-h"><h2>${esc(title)}</h2></div><div class="dlg-b"><p style="margin:0">${ask}</p><div class="scanv"><video id="sc_v" playsinline muted></video><div class="aim"></div></div><p class="hint" id="sc_msg" style="margin:0">Starting the camera…</p>${listHtml}</div>
+    <div class="dlg-f"><button type="button" class="btn sec" id="sc_back">${ctx.mode === "any" ? "Close" : "Back"}</button></div></form>`;
+  if (!d.open) d.showModal();
+  const stop = () => { done = true; clearTimeout(timer); if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; };
+  d.addEventListener("close", stop, { once: true });
+  const msg = t => { const m = $("#sc_msg"); if (m) m.textContent = t; };
+  const hit = r => {
+    if (!r) return false;
+    if (ctx.mode === "place") { if (!r.place) { msg("That is an item label. Scan the place where it goes."); return false; } stop(); askLevel(r.place, "Put away " + fullName(tgtItem), lv => storeItem(ctx.kind, ctx.id, r.place, lv), () => scanSheet(ctx)); return true; }
+    if (ctx.mode === "item") { if (!r.item) { msg("That is a place. Scan the item's label."); return false; } stop(); askLevel(tgtUnit, "Put " + fullName(r.item.it) + " here", lv => storeItem(r.item.kind, r.item.it.id, tgtUnit, lv), () => locSheet(tgtUnit.id)); return true; }
+    stop(); if (r.place) locSheet(r.place.id); else itemSheet(r.item.kind, r.item.it.id); return true;
+  };
+  $("#sc_back").onclick = () => { stop(); if (ctx.mode === "place" && tgtItem) itemSheet(ctx.kind, ctx.id); else if (ctx.mode === "item" && tgtUnit) locSheet(tgtUnit.id); else d.close(); };
+  if ($("#sc_pick")) $("#sc_pick").onchange = e => { const u = unitById(e.target.value); if (u) hit({ place: u }); };
+  if ($("#sc_code")) { const box = $("#sc_code"), res = $("#sc_res");
+    const paint = () => { const q = box.value.trim(); if (!q) { res.innerHTML = ""; return; } const exact = readCode(q); const list = ctx.mode === "item" ? searchItems(q).slice(0, 6).map(x => ({ item: x })) : [...(exact ? [exact] : []), ...searchItems(q).slice(0, 5).map(x => ({ item: x })).filter(x => !exact || x.item.it.id !== exact.item?.it.id)];
+      res.innerHTML = list.length ? `<ul class="res">${list.map((r, i) => `<li><div class="nm"><strong>${esc(r.place ? r.place.name : fullName(r.item.it))}</strong><div class="sub">${r.place ? "Place · " + esc(placeOf(r.place)) : esc((r.item.it.sku || "") + " · " + (whereText(r.item.it) || kindName(r.item.kind)))}</div></div><button type="button" class="btn sec" data-pick="${i}">Choose</button></li>`).join("")}</ul>` : `<p class="hint">Nothing matches.</p>`;
+      res.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => hit(list[Number(b.dataset.pick)])); };
+    box.oninput = paint; box.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); res.querySelector("[data-pick]")?.click(); } }; }
+  (async () => {
+    if (!navigator.mediaDevices?.getUserMedia) { msg("This browser cannot use the camera here. Use the box below instead."); return; }
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); } catch (e) { msg("No camera, or camera blocked. Allow it in the browser, or use the box below."); return; }
+    if (done) { stop(); return; } const v = $("#sc_v"); v.srcObject = stream; try { await v.play(); } catch (e) {}
+    let det = null; if ("BarcodeDetector" in window) { try { det = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) {} }
+    let jq = null; if (!det) { try { jq = await loadJsQR(); } catch (e) { msg(e.message + " Use the box below."); return; } }
+    const cv = document.createElement("canvas"), g = cv.getContext("2d", { willReadFrequently: true }); msg("Point the camera at the label.");
+    const tick = async () => {
+      if (done || !v.videoWidth) { if (!done) timer = setTimeout(tick, 200); return; }
+      let text = null;
+      try { if (det) { const r = await det.detect(v); text = r[0]?.rawValue || null; } else { const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth); cv.width = w; cv.height = h; g.drawImage(v, 0, 0, w, h); const r = jq(g.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" }); text = r?.data || null; } } catch (e) {}
+      if (text) { const r = readCode(text); if (r) { if (navigator.vibrate) navigator.vibrate(60); if (hit(r)) return; } else msg("That code is not one of ours."); }
+      if (!done) timer = setTimeout(tick, 180);
+    };
+    tick();
+  })();
 }
 
 boot();

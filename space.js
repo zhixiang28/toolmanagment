@@ -13,9 +13,10 @@
     desk: { label: "PC desk", w: 1.4, d: 0.7, h: 0.75, levels: 1, fill: "#A8793F", c3: 0xC7955A },
     rack: { label: "Rack", w: 1.2, d: 0.5, h: 1.8, levels: 4, fill: "#5B6B73", c3: 0x9BA7AD },
     box: { label: "Box", w: 0.4, d: 0.3, h: 0.25, levels: 1, fill: "#D9822B", c3: 0xE39A4A },
+    bag: { label: "Tool bag", w: 0.5, d: 0.3, h: 0.3, levels: 1, fill: "#9C3B2B", c3: 0xB5473A },
   };
   /* what the Add buttons make; a wall cabinet is a cabinet that hangs 120 cm up */
-  const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {} };
+  const ADDS = { shelf: {}, cabinet: {}, wall: { kind: "cabinet", label: "Wall cabinet", w: 0.8, d: 0.35, h: 0.6, levels: 2, elev: 1.2 }, drawers: {}, bench: {}, desk: {}, rack: {}, bag: { elev: 0 } };
   const ADD_LABEL = { shelf: "Shelf", cabinet: "Cabinet", wall: "Wall cabinet", drawers: "Drawer unit", bench: "Workbench", desk: "PC desk", rack: "Rack" };
   const S = { rooms: [], units: [], sel: null, tool: "select", draft: [], rect: null, v: { ox: -1, oz: -1, ppm: 60 }, view: null, t: null, find: "", hl: null, drag: null, hover: null, undo: [], burst: false, pending: null, saveT: null, guides: null, keys: null, multi: [], marq: null, space: false, clipLast: null, pasteN: 0, link: (() => { try { return localStorage.getItem("sp_link") !== "0"; } catch (e) { return true; } })(), esize: (() => { try { return localStorage.getItem("sp_esize") || "M"; } catch (e) { return "M"; } })(), ev: null, eg: null, eview: (() => { try { return localStorage.getItem("sp_view") || "S"; } catch (e) { return "S"; } })(), open: {} };
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b), r2 = v => Math.round(v * 100) / 100, snapTo = (v, s) => Math.round(v / s) * s;
@@ -112,7 +113,7 @@
     if (!chain.length) return (r ? r.name + " · " : "") + u.name;
     return (r ? r.name + " · " : "") + x.name + (x.kind === "rack" ? " · level " + chain[0].parent_level : "") + " · " + chain.map(c => c.name).join(" › ");
   };
-  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.kind === "box" ? (u.levels > 1 ? " · section " + it.level : "") : isTable(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level); };
+  const whereOf = it => { const u = unit(it.unit_id); if (!u) return null; return unitPath(u) + (u.kind === "bag" ? "" : u.kind === "box" ? (u.levels > 1 ? " · section " + it.level : "") : isTable(u) ? (Number(it.level) === 2 ? " · under the table" : " · on the top") : " · level " + it.level); };
   const contents = u => [...itemsAt(u.id), ...kids(u).flatMap(b => itemsAt(b.id))];
 
   async function load() {
@@ -838,7 +839,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         <div class="field" style="min-width:120px;max-width:150px"><label for="uKind">Type</label><select id="uKind" class="sel">${types}</select></div></div>
       <p class="hint">${rm ? "In " + esc(rm.name) : "Not inside a room"}${u.elev > 0 && !desk ? " · hangs " + cm(u.elev) + " cm above the floor" : ""}${its.length ? " · " + its.length + " item" + (its.length > 1 ? "s" : "") + " stored" : ""}</p>
       ${clash.length ? `<p class="status-line err" style="margin:6px 0">Overlaps ${esc(clash.map(o => o.name).join(", "))} in height, so they would collide. Lower it, or raise or shorten the other one.</p>` : ""}
-      ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${onTable}${desk ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${underCab}${underDesk}${boxesHtml}
+      ${sec("pos", "Position", posHtml)}${sec("size", "Size", sizeHtml)}${onTable}${desk || u.kind === "bag" ? "" : sec("lev", u.kind === "drawers" ? "Drawers" : "Levels", levelsHtml)}${u.kind === "bag" ? sec("bag", "Tools in the bag", `${bagSvg(u) || `<p class="hint" style="margin:0 0 8px">No layout yet. Draw where each tool sits, as seen from above.</p>`}<button type="button" class="btn" id="bagEdit" style="margin-top:8px">Draw the tool layout</button>`) : ""}${underCab}${underDesk}${boxesHtml}
       ${sec("col", "Colour", `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${swatches(col)}<label style="display:flex;gap:6px;align-items:center;margin:0 0 0 4px;font-weight:400"><input type="color" id="uCol" value="${col}" style="width:34px;height:28px;padding:0;border:1px solid #14232B"> Other</label><button type="button" class="linkbtn" id="uColDef" style="color:var(--steel);padding:0 4px">Default</button></div>`)}
       <div class="row" style="margin-top:12px"><button type="button" class="btn sec" id="uDup">Copy</button><button type="button" class="btn sec" id="u3d">See in 3D</button><button type="button" class="btn sec" id="uQr">QR label</button><button type="button" class="btn danger" id="uDel">Remove</button></div>
       </fieldset>
@@ -879,6 +880,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     if ($("#bxAdd")) $("#bxAdd").onclick = () => requireAuth(() => addBox(u, Number($("#bxL").value)));
     el.querySelectorAll("[data-box]").forEach(b => b.onclick = () => { S.sel = { kind: "unit", id: b.dataset.box }; paintProps(); draw(); });
     $("#uDup").onclick = () => requireAuth(() => addUnit(u.kind, u));
+    if ($("#bagEdit")) $("#bagEdit").onclick = () => requireAuth(async () => { await flushSave(); bagEditor(u); });
     $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); }; if ($("#uQr")) $("#uQr").onclick = async () => { await flushSave(); qrLabels([u.id]); };
     $("#uDel").onclick = () => requireAuth(() => removeUnit(u));
   }
@@ -964,6 +966,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     $("#uColDef").onclick = () => { change(() => { u.color = null; }, true); paintProps(); };
     $("#bxBack").onclick = () => { flushSave(); S.sel = { kind: "unit", id: p.id }; paintProps(); draw(); };
     $("#uDup").onclick = () => requireAuth(() => addUnit("box", u));
+    if ($("#bagEdit")) $("#bagEdit").onclick = () => requireAuth(async () => { await flushSave(); bagEditor(u); });
     $("#u3d").onclick = async () => { await flushSave(); state.spaceFocusUnit = u.id; setTab("s3d"); }; if ($("#uQr")) $("#uQr").onclick = async () => { await flushSave(); qrLabels([u.id]); };
     $("#uDel").onclick = () => requireAuth(async () => { const back = p.id; await removeUnit(u); if (!unit(u.id)) { S.sel = { kind: "unit", id: back }; paintProps(); draw(); } });
   }
@@ -1022,14 +1025,14 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     }
     const edgeM = new T.LineBasicMaterial({ color: 0xE6EEF1 });
     k.own = [];   // every drawn thing with the cabinet it belongs to, so the rest can fade out when one item is being found
-    const ownOf = id => { if (String(id).startsWith("dm:")) id = String(id).slice(3); if (String(id).startsWith("a:")) { const a = (state.assets || []).find(x => "a:" + x.id === id), t = a && a.unit_id && unit(a.unit_id); return t ? rootOf(t).id : null; } const u = unit(id); return u ? rootOf(u).id : null; };
+    const ownOf = id => { if (String(id).startsWith("dm:")) id = String(id).slice(3).split(":")[0]; if (String(id).startsWith("a:")) { const a = (state.assets || []).find(x => "a:" + x.id === id), t = a && a.unit_id && unit(a.unit_id); return t ? rootOf(t).id : null; } const u = unit(id); return u ? rootOf(u).id : null; };
     k.ownOf = ownOf; const edgeG = new T.LineBasicMaterial({ color: 0x9FB0B8, transparent: true, opacity: 0.18 }); k.edgeM = edgeM; k.edgeG = edgeG;
     const addBox3 = (u, m, cx, cy, cz, wx, hy, wz, pick) => {
       const o = new T.Mesh(B(wx, hy, wz), m); o.position.set(cx, cy, cz); root.add(o);
       if (pick !== false) { o.userData.unit = u.id; k.pick.push(o); }
       const e = new T.LineSegments(new T.EdgesGeometry(B(wx, hy, wz)), edgeM); e.position.copy(o.position); root.add(e); k.own.push({ own: ownOf(u.id), edge: e }); return o;
     };
-    k.mats = {}; k.fo = undefined;
+    k.mats = {}; k.fo = undefined; k.slots = [];
     const matOf = u => { const m = new T.MeshStandardMaterial({ color: u.color ? parseInt(u.color.slice(1), 16) : KINDS[u.kind]?.c3 || 0x3A87AA, roughness: .6, metalness: .05, emissive: 0x000000 }); k.mats[u.id] = m; return m; };
     for (const u of tops()) {
       const f = fp(u), cx = f.x + f.w / 2, cz = f.z + f.d / 2, e0 = u.elev || 0, D = DIR[u.rot] || DIR[0], alongX = D.R[0] !== 0, m = matOf(u);
@@ -1063,13 +1066,21 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
         if (S.t) { /* level lines are the shelves themselves */ }
       } else {
         addBox3(u, m, cx, e0 + u.h / 2, cz, f.w, u.h, f.d);
+        if (u.kind === "bag") {   // the tool slots drawn on the top, so you can see which pocket a tool is in
+          const top = e0 + u.h + 0.004, [hw, hd] = wd(Math.min(0.24, u.w * 0.5), 0.03); addBox3(u, m, cx, e0 + u.h + 0.05, cz, hw, 0.025, hd, false);
+          (Array.isArray(u.layout) ? u.layout : []).forEach((sl, i) => {
+            const a = -u.w / 2 + (Number(sl.x) + Number(sl.w) / 2) / 100, b = u.d / 2 - (Number(sl.y) + Number(sl.h) / 2) / 100, [sw, sd] = wd(Number(sl.w) / 100, Number(sl.h) / 100);
+            const sm = new T.MeshStandardMaterial({ color: 0x1b2328, roughness: .8, emissive: 0x000000 }); k.mats["dm:" + u.id + ":" + i] = sm;
+            addBox3(u, sm, cx + D.R[0] * a + D.F[0] * b, top, cz + D.R[1] * a + D.F[1] * b, sw, 0.006, sd, false); (k.slots = k.slots || []).push({ m: sm, tool: sl.tool || null });
+          });
+        }
         if (u.kind !== "bench" && u.kind !== "box" && u.levels > 1) {   // level lines on the front, so you can count to the right shelf
           const x0 = f.x, x1 = f.x + f.w, z0 = f.z, z1 = f.z + f.d, o2 = 0.004, ends = { 0: [[x0, z1 + o2], [x1, z1 + o2]], 90: [[x0 - o2, z0], [x0 - o2, z1]], 180: [[x0, z0 - o2], [x1, z0 - o2]], 270: [[x1 + o2, z0], [x1 + o2, z1]] }[u.rot] || [[x0, z1 + o2], [x1, z1 + o2]], segs = [];
           for (let i = 1; i < u.levels; i++) { const y = lvBase(u, i + 1); segs.push(new T.Vector3(ends[0][0], y, ends[0][1]), new T.Vector3(ends[1][0], y, ends[1][1])); }
           root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(segs), new T.LineBasicMaterial({ color: u.color && light(u.color) ? 0x14232B : 0xE6EEF1 })));
         }
       }
-      const lt = label(u.name, 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : 0.25), cz); root.add(lt); k.own.push({ own: u.id, label: lt, lk: "unit" });
+      const lt = label(u.name, u.kind === "bag" ? 0.45 : 0.8); lt.position.set(cx, e0 + u.h + (u.kind === "desk" ? 0.55 : u.kind === "bag" ? 0.3 : 0.25), cz); root.add(lt); k.own.push({ own: u.id, label: lt, lk: "unit" });
     }
     const mk = new T.Mesh(new T.ConeGeometry(0.16, 0.4, 16), new T.MeshBasicMaterial({ color: 0xF2C200 })); mk.rotation.x = Math.PI; mk.visible = false; root.add(mk); k.marker = mk;
   }
@@ -1087,9 +1098,11 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
       for (const o of k.own) if (o.label) o.label.visible = o.lk === "asset" ? !!act && o.own === act : act ? o.own === act : near.has(o);
       for (const l of k.rl) l.visible = C.dist > 9;
     }
-    for (const [uid, m] of Object.entries(k.mats)) { const on = S.hl === uid; m.emissive.setHex(on ? 0x6B5400 : 0x000000); m.emissiveIntensity = on ? 0.5 + p : 0; }
+    const ft = (S.focusItem || "").startsWith("tool:") ? S.focusItem.slice(5) : null;
+    (k.slots || []).forEach(sl => { const on = !!ft && sl.tool === ft, t = sl.tool && state.tools.find(x => x.id === sl.tool); sl.m.color.setHex(on ? 0xF2C200 : t && t.status === "out" ? 0x6A2A20 : t ? 0x3E6E86 : 0x2A3439); sl.m.emissive.setHex(on ? 0x6B5400 : 0); sl.m.emissiveIntensity = on ? 0.4 + p : 0; });
+    for (const [uid, m] of Object.entries(k.mats)) { if (uid.startsWith("dm:")) continue; const on = S.hl === uid; m.emissive.setHex(on ? 0x6B5400 : 0x000000); m.emissiveIntensity = on ? 0.5 + p : 0; }
     const ae = S.hl && String(S.hl).startsWith("a:") ? assetEntry(String(S.hl).slice(2)) : null; if (ae && k.marker) { k.marker.visible = true; k.marker.position.set(ae.cx, ae.y + ae.h + 0.45 + 0.1 * p, ae.cz); return; }
-    const u = S.hl && unit(S.hl); if (u && k.marker) { const a = anchor(u); k.marker.visible = true; k.marker.position.set(a.x, a.y1 + (u.parent_id ? 0.45 : 0.75) + 0.15 * p, a.z); } else if (k.marker) k.marker.visible = false;
+    const u = S.hl && unit(S.hl); if (u && k.marker) { const a = anchor(u); k.marker.visible = true; k.marker.position.set(a.x, a.y1 + (u.parent_id ? 0.45 : u.kind === "bag" ? 0.55 : 0.75) + 0.15 * p, a.z); } else if (k.marker) k.marker.visible = false;
   }
   function controls(cv) {
     const k = S.t, C = k.C;
@@ -1133,11 +1146,90 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const front = u => { const D = DIR[(rootOf(u) || u).rot] || DIR[0]; return Math.atan2(-D.F[1], -D.F[0]); };   // camera on the side the unit faces
     if (ae) { const t = unit((state.assets || []).find(x => "a:" + x.id === "a:" + String(uid).slice(2))?.unit_id); flyTo({ tx: ae.cx, tz: ae.cz, ty: ae.y + ae.h / 2, dist: Math.max(1.6, Math.max(ae.wx, ae.wz, ae.h) * 3), th: t ? front(t) : k.C.th, ph: 1.2 }, overview); return; }
     const u = unit(uid); if (!u) return; const a = anchor(u);
-    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: 1.25 }, overview);
+    flyTo({ tx: a.x, tz: a.z, ty: (a.y0 + a.y1) / 2, dist: u.kind === "bag" ? Math.max(1.1, Math.max(a.w, a.d) * 2.8) : Math.max(u.parent_id ? 1.8 : 3, Math.max(a.w, a.d, a.y1 - a.y0) * 2.4), th: front(u), ph: u.kind === "bag" ? 0.6 : 1.25 }, overview);
   }
   function focusItem(kind, id) {
     const x = allItems().find(a => a.kind === kind && String(a.it.id) === String(id)); if (!x) return; if (!x.it.unit_id || !unit(x.it.unit_id)) { toast(itemName(x) + " has no place yet. Set one under Setup, Catalogue, Place items."); return; }
     S.hl = kind === "asset" && assetEntry(x.it.id) ? "a:" + x.it.id : x.it.unit_id; S.sel = { kind: "unit", id: x.it.unit_id }; S.focusItem = kind + ":" + x.it.id; focusUnit(S.hl, true); paintSide();
+  }
+  /* tool bag layout: draw a slot for each tool as seen from above (front at the bottom); sizes in cm */
+  function bagEditor(u) {
+    const d = $("#dlg"), W = Math.round(u.w * 100), H = Math.round(u.d * 100), snap = v => Math.round(v * 2) / 2;
+    let L = (Array.isArray(u.layout) ? u.layout : []).map(x => ({ x: Number(x.x), y: Number(x.y), w: Number(x.w), h: Number(x.h), tool: x.tool || null, label: x.label || "" })), sel = L.length ? 0 : -1, drag = null, dirty = false;
+    d.classList.add("wide");
+    d.innerHTML = `<form id="bagForm" method="dialog"><div class="dlg-h"><h2>Tool layout: ${esc(u.name)}</h2><div style="font-size:14px;opacity:.8">${W} × ${H} cm, seen from above, front at the bottom</div></div><div class="dlg-b">
+      <div class="row" style="gap:8px;align-items:center"><button type="button" class="btn" id="bgAdd">＋ Add a slot</button><button type="button" class="btn sec" id="bgAuto">A slot for each tool in this bag</button><span class="hint" style="margin:0">Or drag on an empty spot to draw one.</span></div>
+      <div class="bgwrap"><canvas id="bgCv" tabindex="0" aria-label="Bag layout. Drag to draw or move slots; arrow keys nudge; Delete removes."></canvas><div id="bgSel" class="bgsel"></div></div></div>
+      <div class="dlg-f"><button type="submit" value="cancel" class="btn sec" formnovalidate>Cancel</button><button type="button" class="btn" id="bgSave">Save layout</button></div></form>`;
+    if (!d.open) d.showModal(); d.addEventListener("close", () => d.classList.remove("wide"), { once: true });
+    const cv = $("#bgCv"), g = cv.getContext("2d"), tools = [...state.tools].sort((a, b) => a.name.localeCompare(b.name));
+    let sc = 1, ox = 14, oy = 14;
+    const size = () => { const box = cv.parentElement.getBoundingClientRect(), avail = Math.max(240, Math.min(box.width > 700 ? box.width - 270 : box.width, 720)); sc = (avail - 28) / W; cv.width = Math.round(W * sc + 28); cv.height = Math.round(H * sc + 40); cv.style.width = cv.width + "px"; cv.style.height = cv.height + "px"; };
+    const toolOf = id => state.tools.find(t => t.id === id);
+    const nameOf = s => s.label || (s.tool && toolOf(s.tool)?.name) || "";
+    const draw = () => {
+      g.clearRect(0, 0, cv.width, cv.height); g.fillStyle = "#EEF1F2"; g.fillRect(0, 0, cv.width, cv.height);
+      g.fillStyle = "#2A3439"; g.fillRect(ox, oy, W * sc, H * sc);
+      g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 1; for (let x = 5; x < W; x += 5) { g.beginPath(); g.moveTo(ox + x * sc, oy); g.lineTo(ox + x * sc, oy + H * sc); g.stroke(); } for (let y = 5; y < H; y += 5) { g.beginPath(); g.moveTo(ox, oy + y * sc); g.lineTo(ox + W * sc, oy + y * sc); g.stroke(); }
+      L.forEach((s, i) => {
+        const x = ox + s.x * sc, y = oy + s.y * sc, w = s.w * sc, h = s.h * sc, on = i === sel, t = s.tool && toolOf(s.tool);
+        g.fillStyle = t ? "#3E6E86" : "#55636B"; g.fillRect(x, y, w, h); g.strokeStyle = on ? "#F2C200" : "#9DB0B8"; g.lineWidth = on ? 3 : 1; g.strokeRect(x, y, w, h);
+        const nm = nameOf(s); if (nm) { g.save(); g.beginPath(); g.rect(x + 1, y + 1, w - 2, h - 2); g.clip(); g.fillStyle = "#fff"; g.font = "600 " + Math.max(10, Math.min(15, Math.min(h, w) * 0.4)) + "px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+          if (h > w * 1.4) { g.translate(x + w / 2, y + h / 2); g.rotate(-Math.PI / 2); g.fillText(nm, 0, 0); } else g.fillText(nm, x + w / 2, y + h / 2); g.restore(); }
+        if (on) { g.fillStyle = "#F2C200"; g.strokeStyle = "#14232B"; g.lineWidth = 2; g.beginPath(); g.rect(x + w - 7, y + h - 7, 14, 14); g.fill(); g.stroke(); }
+      });
+      if (drag && drag.kind === "new") { g.strokeStyle = "#F2C200"; g.setLineDash([5, 4]); g.lineWidth = 2; g.strokeRect(ox + Math.min(drag.x0, drag.x1) * sc, oy + Math.min(drag.y0, drag.y1) * sc, Math.abs(drag.x1 - drag.x0) * sc, Math.abs(drag.y1 - drag.y0) * sc); g.setLineDash([]); }
+      g.fillStyle = "#5B6B73"; g.font = "600 11px sans-serif"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText("FRONT", ox + W * sc / 2, oy + H * sc + 8);
+    };
+    const panel = () => {
+      const el = $("#bgSel"), s = L[sel]; if (!s) { el.innerHTML = `<p class="hint" style="margin:0">${L.length ? "Tap a slot to choose its tool, name or size." : "No slots yet. Press Add a slot, or drag on the bag to draw one."}</p><p class="hint">${L.length} slot${L.length === 1 ? "" : "s"} · ${L.filter(x => x.tool).length} with a tool</p>`; return; }
+      const used = new Set(L.filter((x, i) => i !== sel && x.tool).map(x => x.tool));
+      el.innerHTML = `<div class="field"><label for="bg_tool">Tool</label><select id="bg_tool" class="sel"><option value="">No tool (just a pocket)</option>${tools.map(t => `<option value="${t.id}" ${t.id === s.tool ? "selected" : ""} ${used.has(t.id) ? "disabled" : ""}>${esc(t.name)}${used.has(t.id) ? " (has a slot)" : ""}</option>`).join("")}</select></div>
+        <div class="field"><label for="bg_label">Name on the slot</label><input id="bg_label" maxlength="40" value="${esc(s.label)}" placeholder="${esc(s.tool ? toolOf(s.tool)?.name || "" : "e.g. Spare blades")}"></div>
+        <div class="row"><div class="field" style="min-width:70px"><label for="bg_w">Width (cm)</label><input id="bg_w" type="number" min="0.5" step="0.5" value="${s.w}"></div><div class="field" style="min-width:70px"><label for="bg_h">Depth (cm)</label><input id="bg_h" type="number" min="0.5" step="0.5" value="${s.h}"></div></div>
+        <div class="row" style="gap:6px;margin-top:6px"><button type="button" class="btn sec" id="bg_rot">Turn 90°</button><button type="button" class="btn sec" id="bg_dup">Copy</button><button type="button" class="btn danger" id="bg_del">Remove</button></div>`;
+      const ch = fn => { fn(); dirty = true; fit(s); draw(); };
+      $("#bg_tool").onchange = e => ch(() => { s.tool = e.target.value || null; });
+      $("#bg_label").oninput = e => ch(() => { s.label = e.target.value; });
+      $("#bg_w").oninput = e => { const v = Number(e.target.value); if (v >= 0.5) ch(() => { s.w = Math.min(v, W); }); };
+      $("#bg_h").oninput = e => { const v = Number(e.target.value); if (v >= 0.5) ch(() => { s.h = Math.min(v, H); }); };
+      $("#bg_rot").onclick = () => { ch(() => { [s.w, s.h] = [Math.min(s.h, W), Math.min(s.w, H)]; }); panel(); };
+      $("#bg_dup").onclick = () => { const c = { ...s, tool: null, x: s.x, y: s.y + s.h + 1 }; fit(c); L.push(c); sel = L.length - 1; dirty = true; draw(); panel(); };
+      $("#bg_del").onclick = () => { L.splice(sel, 1); sel = -1; dirty = true; draw(); panel(); };
+    };
+    const fit = s => { s.w = Math.max(0.5, Math.min(s.w, W)); s.h = Math.max(0.5, Math.min(s.h, H)); s.x = Math.max(0, Math.min(snap(s.x), W - s.w)); s.y = Math.max(0, Math.min(snap(s.y), H - s.h)); };
+    const free = (w, h) => { for (let y = 0; y + h <= H; y += 1) for (let x = 0; x + w <= W; x += 1) if (!L.some(o => x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y)) return [x, y]; return [0, 0]; };
+    const add = (tool, w = Math.min(15, W), h = Math.min(4, H)) => { const [x, y] = free(w, h); L.push({ x, y, w, h, tool: tool || null, label: "" }); sel = L.length - 1; dirty = true; };
+    $("#bgAdd").onclick = () => { add(); draw(); panel(); };
+    $("#bgAuto").onclick = () => { const have = new Set(L.map(x => x.tool)), list = state.tools.filter(t => t.unit_id === u.id && !have.has(t.id)); if (!list.length) { toast("Every tool in this bag already has a slot. Put tools in the bag first under Place items, or pick them for each slot."); return; } list.forEach(t => add(t.id)); draw(); panel(); };
+    const at = e => { const b = cv.getBoundingClientRect(); return { x: (e.clientX - b.left - ox) / sc, y: (e.clientY - b.top - oy) / sc, px: e.clientX - b.left, py: e.clientY - b.top }; };
+    cv.onpointerdown = e => {
+      const p = at(e); cv.setPointerCapture(e.pointerId); cv.focus();
+      const s0 = L[sel]; if (s0 && Math.abs(p.px - (ox + (s0.x + s0.w) * sc)) < 12 && Math.abs(p.py - (oy + (s0.y + s0.h) * sc)) < 12) { drag = { kind: "size", s: s0, w0: s0.w, h0: s0.h, p }; return; }
+      const i = L.map((s, i) => i).reverse().find(i => { const s = L[i]; return p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h; });
+      if (i != null) { sel = i; drag = { kind: "move", s: L[i], x0: L[i].x, y0: L[i].y, p }; panel(); draw(); return; }
+      if (p.x < 0 || p.y < 0 || p.x > W || p.y > H) { sel = -1; panel(); draw(); return; }
+      drag = { kind: "new", x0: snap(p.x), y0: snap(p.y), x1: snap(p.x), y1: snap(p.y) };
+    };
+    cv.onpointermove = e => {
+      if (!drag) { const s0 = L[sel], p = at(e); cv.style.cursor = s0 && Math.abs(p.px - (ox + (s0.x + s0.w) * sc)) < 12 && Math.abs(p.py - (oy + (s0.y + s0.h) * sc)) < 12 ? "nwse-resize" : "default"; return; }
+      const p = at(e);
+      if (drag.kind === "move") { drag.s.x = drag.x0 + (p.x - drag.p.x); drag.s.y = drag.y0 + (p.y - drag.p.y); fit(drag.s); dirty = true; }
+      else if (drag.kind === "size") { drag.s.w = snap(Math.max(0.5, drag.w0 + (p.x - drag.p.x))); drag.s.h = snap(Math.max(0.5, drag.h0 + (p.y - drag.p.y))); drag.s.w = Math.min(drag.s.w, W - drag.s.x); drag.s.h = Math.min(drag.s.h, H - drag.s.y); dirty = true; const a = $("#bg_w"), b = $("#bg_h"); if (a) a.value = drag.s.w; if (b) b.value = drag.s.h; }
+      else { drag.x1 = Math.max(0, Math.min(W, snap(p.x))); drag.y1 = Math.max(0, Math.min(H, snap(p.y))); }
+      draw();
+    };
+    cv.onpointerup = () => { if (drag && drag.kind === "new") { const w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0); if (w >= 1 && h >= 1) { L.push({ x: Math.min(drag.x0, drag.x1), y: Math.min(drag.y0, drag.y1), w, h, tool: null, label: "" }); sel = L.length - 1; dirty = true; } else sel = -1; } drag = null; draw(); panel(); };
+    cv.onkeydown = e => { const s0 = L[sel]; if (!s0) return; const st = e.shiftKey ? 5 : 0.5;
+      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); L.splice(sel, 1); sel = -1; dirty = true; draw(); panel(); return; }
+      const mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key]; if (mv) { e.preventDefault(); s0.x += mv[0]; s0.y += mv[1]; fit(s0); dirty = true; draw(); } };
+    d.oncancel = e => { if (dirty && !confirm("Leave without saving the layout?")) e.preventDefault(); };
+    $("#bgSave").onclick = () => requireAuth(async () => {
+      const out = L.map(s => ({ x: snap(s.x), y: snap(s.y), w: snap(s.w), h: snap(s.h), ...(s.tool ? { tool: s.tool } : {}), ...(s.label ? { label: s.label.trim() } : {}) }));
+      try { await guard(rpcAuth("toolscale_bag_layout", { p_id: u.id, p_layout: out })); u.layout = out; dirty = false; d.close(); toast("Layout saved. Tools with a slot now live in " + u.name + "."); if (window.refreshAll) await refreshAll(); paintProps(); draw0(); } catch (e) {}
+    });
+    const draw0 = () => { try { draw && window.SpaceUI && SpaceUI.onData(); } catch (e) {} };
+    size(); draw(); panel(); addEventListener("resize", function rs() { if (!d.open) { removeEventListener("resize", rs); return; } size(); draw(); });
   }
   /* a shelf, cabinet or rack as a small picture: one row per level, top first, a coloured tag for each box. Tap a tag to open what is inside below it. */
   function rackBody(u, itemRows, addBtn, boxBody) {
@@ -1172,12 +1264,13 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
     const boxBlock = (b, depth) => `<div style="margin:6px 0 0 ${depth * 14}px"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><button class="linkbtn" style="color:var(--steel);padding:0;font-size:14px;font-weight:600" data-box="${b.id}">${depth ? "↑ " : "▢ "}${esc(b.name)}</button>${b.levels > 1 ? "" : addBtn("Add", `data-herebox="${b.id}"`)}</div>${boxBody(b)}${kids(b).map(c => boxBlock(c, depth + 1)).join("")}</div>`;
     let body;
     if (p) body = (u.levels > 1 ? `<div style="margin:6px 0">${secMapHtml(u, true)}</div>` + secList(u) : (itemsAt(u.id).length ? itemRows(itemsAt(u.id)) : `<p class="hint">Nothing stored in this box yet.</p>`) + `<div class="row" style="margin-top:10px">${addBtn("Add to this box", `data-here="1"`)}</div>`) + kids(u).map(c => boxBlock(c, 1)).join("") + `<div class="row" style="margin-top:10px"><button class="btn sec" id="sRack">Show the rack</button></div>`;
+    else if (u.kind === "bag") { const ft = (S.focusItem || "").startsWith("tool:") ? S.focusItem.slice(5) : null; body = `${bagSvg(u, ft) || `<p class="hint">No layout drawn yet.${state.lite ? "" : " Press Edit this place to draw where each tool sits."}</p>`}<div style="margin-top:8px">${itemRows(itemsAt(u.id)) || `<p class="hint" style="margin:0">Nothing in this bag yet.</p>`}</div><div style="margin-top:6px">${addBtn("Add to this bag", `data-here="1"`)}</div>`; }
     else if (!isTable(u)) body = rackBody(u, itemRows, addBtn, boxBody);
     else body = Array.from({ length: isTable(u) ? 2 : u.levels }, (_, i) => (isTable(u) ? 2 : u.levels) - i).map(lv => {
       const its = itemsAt(u.id, lv), bx = kids(u).filter(b => b.parent_level === lv);
       return `<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row" style="justify-content:space-between;align-items:center;gap:6px"><strong>${isTable(u) ? (lv === 2 ? "Under the table" : "On the top") : "Level " + lv}</strong>${addBtn("Add", `data-here="${lv}"`)}</div>${itemRows(its)}${bx.map(b => boxBlock(b, 0)).join("")}${!its.length && !bx.length ? `<div class="hint" style="margin:0">Nothing here yet.</div>` : ""}</div>`;
     }).join("");
-    el.innerHTML = `<h2 style="margin-top:0">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : "Level 1 is the lowest."}${u.elev > 0 && !p ? " Hangs " + cm(u.elev) + " cm above the floor." : ""}</p>${body}
+    el.innerHTML = `<h2 style="margin-top:0">${esc(u.name)}</h2><p class="hint">${rm ? esc(rm.name) + ". " : ""}${p ? "In " + esc(p.name) + ", level " + u.parent_level + "." : u.kind === "bag" ? "Tool bag." : "Level 1 is the lowest."}${u.elev > 0 && !p ? (u.kind === "bag" ? " Sits " : " Hangs ") + cm(u.elev) + " cm above the floor." : ""}</p>${body}
       <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">${state.lite ? "" : `<button class="btn sec" id="sEdit">Edit this place</button>`}<button class="btn sec" data-act="qr-one" data-id="${u.id}">QR label</button></div>`;
     bindFind(); showRes(); if ($("#sEdit")) $("#sEdit").onclick = () => { S.sel = { kind: "unit", id: u.id }; setTab("splan"); };
     el.querySelectorAll("[data-peek]").forEach(b => b.onclick = () => { S.peek = S.peek === b.dataset.peek ? null : b.dataset.peek; if (S.peek === null) S.focusItem = null; const id = b.dataset.peek.startsWith("box:") ? b.dataset.peek.slice(4) : null; S.hl = id || u.id; paintSide(); });
@@ -1189,7 +1282,7 @@ details.acc:not([open])>summary::after{content:"\\25B8"}
   function bindFind() { const i = $("#sFind"); if (!i) return; i.oninput = () => { S.find = i.value; showRes(); }; i.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#sRes [data-go], #sRes [data-gou]")?.click(); } if (e.key === "Escape") { i.value = S.find = ""; showRes(); } }; }
   function showRes() {   // items and places that match every word; picking one flies the 3D view there
     const el = $("#sRes"); if (!el) return; const words = (S.find || "").toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) { el.innerHTML = ""; return; }
-    const hay = x => (itemName(x) + " " + [x.it.slot, x.it.location, x.it.category, x.it.tag, x.it.model].join(" ") + " " + (whereOf(x.it) || "")).toLowerCase();
+    const hay = x => (itemName(x) + " " + [x.it.sku, x.it.slot, x.it.location, x.it.category, x.it.tag, x.it.model].join(" ") + " " + (whereOf(x.it) || "")).toLowerCase();
     const hits = allItems().filter(x => words.every(w => hay(x).includes(w))).slice(0, 8), places = S.units.filter(u => words.every(w => (u.name + " " + unitPath(u)).toLowerCase().includes(w))).slice(0, 3);
     const kn = k => k === "tool" ? "Tool" : k === "asset" ? "Asset" : "Consumable";
     el.innerHTML = places.length || hits.length ? `<ul class="res">${places.map(u => `<li class="${S.hl === u.id && !S.focusItem ? "on" : ""}"><div class="nm"><strong>${esc(u.name)}</strong><div class="sub">Place · ${esc(unitPath(u))}</div></div><button class="btn sec" data-gou="${u.id}">Show</button></li>`).join("")}${hits.map(x => { const k = x.kind + ":" + x.it.id, on = S.focusItem === k; return `<li class="${on ? "on" : ""}"><div class="nm"><strong>${esc(itemName(x))}</strong><div class="sub">${kn(x.kind)} · ${esc(whereOf(x.it) || "not placed yet")}</div></div><button class="btn ${on ? "" : "sec"}" data-go="${k}">Show</button></li>`; }).join("")}</ul>` : `<p class="hint" style="margin:6px 0 0">Nothing matches. Try part of the name, a size like M6, or a shelf name.</p>`;

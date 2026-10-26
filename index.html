@@ -1254,7 +1254,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "54";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "55";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1405,8 +1405,8 @@ state.photos = {};
 async function paintPhoto(kind, id) {
   const box = $("#phBox"), key = kind + ":" + id; if (!box) return;
   const draw = () => { const b = $("#phBox"); if (!b || !state.sheet || state.sheet.id !== id) return; const src = state.photos[key];
-    b.innerHTML = `${src ? `<img src="${src}" alt="Photo" id="phImg">` : ""}<div class="row"><label class="btn sec" style="margin:0;cursor:pointer">${src ? "Change photo" : "＋ Add a photo"}<input type="file" accept="image/*" capture="environment" id="phIn" hidden></label>${src ? `<button type="button" class="btn sec" id="phDel">Remove photo</button>` : ""}</div>`;
-    $("#phIn").onchange = e => { const f = e.target.files[0]; if (f) requireAuth(() => savePhoto(kind, id, f)); };
+    b.innerHTML = `${src ? `<img src="${src}" alt="Photo" id="phImg">` : ""}<div class="row"><label class="btn sec" style="margin:0;cursor:pointer">📷 ${src ? "New photo" : "Take a photo"}<input type="file" accept="image/*" capture="environment" class="phIn" id="phIn" hidden></label><label class="btn sec" style="margin:0;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" class="phIn" id="phGal" hidden></label>${src ? `<button type="button" class="btn sec" id="phDel">Remove photo</button>` : ""}</div>`;
+    b.querySelectorAll(".phIn").forEach(i => i.onchange = e => { const f = e.target.files[0]; if (f) requireAuth(() => savePhoto(kind, id, f)); });
     if ($("#phDel")) $("#phDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this photo?")) return; try { await guard(rpcAuth("toolscale_item_photo", { p_kind: kind, p_id: id, p_photo: "" })); state.photos[key] = null; draw(); } catch (e) {} });
     if ($("#phImg")) $("#phImg").onclick = () => window.open().document.write(`<img src="${src}" style="max-width:100%">`); };
   if (!(key in state.photos)) { draw(); try { const r = await sb.from("item_photos").select("photo").eq("kind", kind).eq("item_id", id).maybeSingle(); state.photos[key] = r.data?.photo || null; } catch (e) { state.photos[key] = null; } }

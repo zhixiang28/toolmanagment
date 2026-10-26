@@ -58,6 +58,7 @@ button.brand{background:none;border:0;color:#fff;cursor:pointer;padding:0;text-a
 .scanv{position:relative;background:#000;aspect-ratio:4/3;width:100%;overflow:hidden}.scanv video{width:100%;height:100%;object-fit:cover;display:block}.scanv .aim{position:absolute;inset:18%;border:3px solid var(--hivis);border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
 .lvpick{display:grid;gap:8px}.lvpick button{border:3px solid var(--ink);background:#fff;padding:14px;font-size:17px;font-weight:700;cursor:pointer;text-align:left}.lvpick button:hover{background:var(--ink);color:#fff}
 #pgseg:empty{display:none}.pgseg{max-width:1100px;margin:var(--s3) auto 0;padding:0 var(--s4);display:flex;gap:0}.pgseg button{background:#fff;border:2px solid var(--ink);margin-left:-2px;padding:6px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}.pgseg button:first-child{margin-left:0}.pgseg button[aria-selected=true]{background:var(--ink);color:#fff}
+.phbox img{width:100%;max-height:300px;object-fit:contain;background:#fff;border:1px solid var(--line);display:block;cursor:zoom-in}.phbox .row{margin-top:6px;gap:8px}
 .bagsvg{width:100%;height:auto;display:block;max-height:360px;margin:4px 0}dialog.wide{max-width:980px}.bgwrap{display:flex;gap:var(--s4);align-items:flex-start;flex-wrap:wrap;margin-top:var(--s3)}.bgwrap canvas{touch-action:none;max-width:100%;border:1px solid var(--line)}.bgsel{flex:1;min-width:220px}
 .bigtwo{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.bigtwo button,.durs button{border:3px solid var(--ink);background:#fff;color:var(--ink);padding:18px 10px;cursor:pointer;font-size:17px;font-weight:700;text-align:center}.bigtwo small{display:block;font-weight:400;font-size:13px;margin-top:4px}.bigtwo button:hover,.durs button:hover{background:var(--ink);color:#fff}.durs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.durs button{padding:14px 6px;font-size:16px}.stepq[hidden]{display:none}.stepq{display:flex;align-items:center;gap:var(--s3)}.stepq button{width:44px;height:44px;border:2px solid var(--ink);background:#fff;font-size:22px;cursor:pointer}.stepq input{width:80px;text-align:center;font-size:20px;font-weight:700;height:44px}
 .subtabs .grp{color:#7F949D;font-size:12px;align-self:center;margin-left:6px;white-space:nowrap}
@@ -769,6 +770,7 @@ function paintSheet() {
     : tool ? [["Status", it.status === "out" ? outWord(it.taken_at) : "In"], ...(loanFor("tool", it.id) ? [["Taken by", loanFor("tool", it.id).person + (whyText(loanFor("tool", it.id)) ? " · " + whyText(loanFor("tool", it.id)) : "")], ["Return", dueWord(loanFor("tool", it.id))]] : []), ["Weight", fmtG(it.weight_g) + " g"], ["Match window", "± " + fmtG(it.tol_g) + " g"]]
     : [["On hand", it.count_on_hand + (lowItem(it) ? " (low)" : "")], ...(wunitOf(it.id) ? [["Weighing unit", wunitOf(it.id).name + (wunitOf(it.id).last_g != null ? " · " + fmtG(wunitOf(it.id).last_g, 1) + " g" : "")]] : []), ["Minimum", it.min_stock || "-"], ["Per piece", fmtG(it.unit_g, 3) + " g"], ["Counted", it.counted_at ? ago(it.counted_at) + " ago" : "never"]];
   d.innerHTML = `<form method="dialog" id="sheetForm"><div class="dlg-h"><h2>${esc(fullName(it))}</h2><div style="font-size:14px;opacity:.8">${kindName(sh.kind)}${it.category ? " · " + esc(it.category) : ""}</div></div><div class="dlg-b">
+    <div class="phbox" id="phBox"></div>
     <div class="facts">${[...skuF, ...facts].map(([k, v]) => `<div><div class="k">${k}${k === "SKU" ? ` <button type="button" class="linkbtn" style="color:var(--steel);padding:0;font-size:12px" data-act="sku-edit" data-kind="${sh.kind}" data-id="${it.id}">change</button>` : ""}</div><div class="v num">${esc(v)}</div></div>`).join("")}</div>
     ${ord ? `<div class="banner info" style="margin:0"><span>On the order list: ${ord.qty} × (${esc(ord.reason)}${ord.status === "in_draft" ? ", in the MR draft" : ""}).</span></div>` : ""}
     <div><h3 style="font-size:22px;margin-bottom:6px">Where it lives</h3><p style="margin:0 0 8px">${where ? esc(where) : `<span class="hint">No place set yet.</span>`}</p>
@@ -787,7 +789,7 @@ function paintSheet() {
         <button type="button" class="btn sec" data-act="report" data-kind="consumable" data-id="${it.id}">Reorder</button>
         <button type="button" class="btn sec" data-act="citem-edit" data-id="${it.id}">Edit</button>`}
       </div></form>`;
-  bindPlace("sp");
+  bindPlace("sp"); paintPhoto(sh.kind, it.id);
   const sv = $("#spSave"); if (sv) sv.onclick = () => requireAuth(async () => { try { await savePlace(sh.kind, it.id, "sp", it); await refreshAll(); toast("Place saved"); itemSheet(sh.kind, it.id); } catch (e) {} });
 }
 /* ---------- assets: equipment you keep track of, drawn as a box on a table, shelf or the floor ---------- */
@@ -1252,7 +1254,7 @@ function reportDialog(kind, item) {
 
 /* ---------- camera: counting and labelling pictures (YOLO) ---------- */
 function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = () => rej(new Error("Could not load " + src)); document.head.appendChild(el); }); }
-const VISION_V = "53";   // bump when detect.js or space.js change so browsers do not keep an old copy
+const VISION_V = "54";   // bump when detect.js or space.js change so browsers do not keep an old copy
 let detectLoading = null;
 function ensureDetect() { if (window.DetectUI) return Promise.resolve(); detectLoading = detectLoading || loadScript("detect.js?v=" + VISION_V).catch(e => { detectLoading = null; throw e; }); return detectLoading; }
 async function detectPage(fn) {
@@ -1397,6 +1399,26 @@ function takeSheet(kind, id) {
   d.querySelectorAll("[data-dur]").forEach(b => b.onclick = () => { if (b.dataset.dur === "other") { $("#tkOther").hidden = false; $("#tk_n").focus(); $("#tk_n").select(); return; } go("Borrowed", dueAt(DURS[Number(b.dataset.dur)][1]).toISOString()); });
   $("#tkOtherGo").onclick = () => { const n = Number($("#tk_n").value); if (!(n >= 1)) { $("#tk_n").focus(); return; } go("Borrowed", new Date(Date.now() + n * Number($("#tk_u").value)).toISOString()); };
   $("#tk_n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#tkOtherGo").click(); } };
+}
+/* a photo per item: kept small (resized in the browser) and loaded only when its card opens */
+state.photos = {};
+async function paintPhoto(kind, id) {
+  const box = $("#phBox"), key = kind + ":" + id; if (!box) return;
+  const draw = () => { const b = $("#phBox"); if (!b || !state.sheet || state.sheet.id !== id) return; const src = state.photos[key];
+    b.innerHTML = `${src ? `<img src="${src}" alt="Photo" id="phImg">` : ""}<div class="row"><label class="btn sec" style="margin:0;cursor:pointer">${src ? "Change photo" : "＋ Add a photo"}<input type="file" accept="image/*" capture="environment" id="phIn" hidden></label>${src ? `<button type="button" class="btn sec" id="phDel">Remove photo</button>` : ""}</div>`;
+    $("#phIn").onchange = e => { const f = e.target.files[0]; if (f) requireAuth(() => savePhoto(kind, id, f)); };
+    if ($("#phDel")) $("#phDel").onclick = () => requireAuth(async () => { if (!confirm("Remove this photo?")) return; try { await guard(rpcAuth("toolscale_item_photo", { p_kind: kind, p_id: id, p_photo: "" })); state.photos[key] = null; draw(); } catch (e) {} });
+    if ($("#phImg")) $("#phImg").onclick = () => window.open().document.write(`<img src="${src}" style="max-width:100%">`); };
+  if (!(key in state.photos)) { draw(); try { const r = await sb.from("item_photos").select("photo").eq("kind", kind).eq("item_id", id).maybeSingle(); state.photos[key] = r.data?.photo || null; } catch (e) { state.photos[key] = null; } }
+  draw();
+}
+async function savePhoto(kind, id, file) {
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("That file is not a picture.")); i.src = URL.createObjectURL(file); });
+    let max = 1000, q = 0.78, out = "";
+    for (let n = 0; n < 6; n++) { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); out = c.toDataURL("image/jpeg", q); if (out.length < 380000) break; max *= 0.8; q -= 0.08; }
+    await guard(rpcAuth("toolscale_item_photo", { p_kind: kind, p_id: id, p_photo: out })); state.photos[kind + ":" + id] = out; toast("Photo saved"); paintPhoto(kind, id);
+  } catch (e) { if (e.message && !/sign in/i.test(e.message)) toast(e.message, true); }
 }
 /* adding to what is on hand, for example after a delivery */
 function addStockSheet(id) {
